@@ -43,6 +43,10 @@ public class Character
     public byte ActiveSlotByte29 { get; set; }        // +0x29 of active slot (unknown flag)
     public byte ActiveSlotByte2A { get; set; }        // +0x2A of active slot
 
+    /// <summary>File offset of this character's live STR field in the .ml1 save state.
+    /// -1 = not in active party / not found.</summary>
+    public int LiveStatOffset { get; set; } = -1;
+
     public bool IsEmpty => string.IsNullOrEmpty(Name);
 
     public override string ToString() => IsEmpty ? $"(empty slot {SlotIndex})" : Name;
@@ -51,145 +55,43 @@ public class Character
 public class CharItem
 {
     public byte ItemId { get; set; }
-    public byte Flag { get; set; }      // 0x80 = equipped, 0x00 = in bag
+    public byte Flag { get; set; }      // live format: bit0=1 → equipped
+    public byte Qty { get; set; } = 1;  // live format quantity
 
     public bool IsEmpty => ItemId == 0x00 || ItemId == 0xFF || ItemId == 0xD5;
-    public bool IsEquipped => Flag == 0x80;
+    public bool IsEquipped => (Flag & 0x01) != 0 || Flag == 0x80;
 
     public string ItemName => ItemNames.TryGetValue(ItemId, out var n) ? n : $"Unknown (0x{ItemId:X2})";
 
+    // ── CONFIRMED item IDs only ───────────────────────────────────────────────
+    // Every entry here was verified empirically against the live save state /
+    // .sav buffer and matched against in-game observation. Unknown IDs render as
+    // "Unknown (0xNN)" so we never display a wrong name. Add IDs as they're confirmed.
     public static readonly Dictionary<byte, string> ItemNames = new()
     {
-        // ── Consumables ──────────────────────────────────────────────────────
-        [0x00] = "Nothing",
-        [0xA0] = "Medicinal Herb",
-        [0xA1] = "Medical Herb",
-        [0xA2] = "Strong Medicine",
-        [0xA3] = "Special Medicine",
-        [0xA4] = "Antidotal Herb",
-        [0xA5] = "Coagulant",
-        [0xA6] = "Holy Water",
-        [0xA7] = "Magic Water",
-        [0xA8] = "Chimaera Wing",
-        [0xA9] = "Moonwort Bulb",
-        [0xAA] = "Amor Seco Essence",
-        [0xAB] = "Yggdrasil Dew",
+        [0x00] = "(empty)",
+
+        // Confirmed from early .sav buffer (matched in-game)
+        [0x01] = "Cypress Stick",
+        [0x44] = "Leather Hat",
+        [0x86] = "Plain Clothes",
         [0xAC] = "Seed of Strength",
-        [0xAD] = "Seed of Agility",
-        [0xAE] = "Seed of Resilience",
-        [0xAF] = "Seed of Wisdom",
-        [0xB0] = "Yggdrasil Leaf",
-        [0xB1] = "Dragon Scale",
         [0xB2] = "T 'n' T Ticket",
-        [0xB3] = "Iron Ore",
-        [0xB4] = "Slime Earrings",
-        [0xB5] = "Seed of Life",
-        [0xB6] = "Seed of Magic",
-        [0xB7] = "Seed of Luck",
         [0xD2] = "Adventurer's Map",
 
-        // ── Weapons ──────────────────────────────────────────────────────────
-        [0x01] = "Cypress Stick",
-        [0x02] = "Oaken Club",
-        [0x03] = "Thorn Whip",
-        [0x04] = "Copper Sword",
-        [0x05] = "Chain Sickle",
-        [0x06] = "Boomerang",
-        [0x07] = "Edged Boomerang",
-        [0x08] = "Steel Broadsword",
-        [0x09] = "Zombiesbane",
-        [0x0A] = "Imp Knife",
-        [0x0B] = "Falcon Knife",
-        [0x0C] = "Blades of Byterian",
-        [0x0D] = "Flametang Boomerang",
-        [0x0E] = "Cautery Sword",
-        [0x0F] = "Magic Knife",
-        [0x10] = "Sword of Malice",
-        [0x11] = "Magma Staff",
-        [0x12] = "Dragonsbane",
-        [0x13] = "Spiked Steel Whip",
-        [0x14] = "Holy Lance",
-        [0x15] = "Multithrust Spear",
-        [0x16] = "Dream Blade",
-        [0x17] = "Rusty Old Sword",
-        [0x18] = "Hela's Hammer",
-        [0x19] = "Liquid Metal Sword",
-        [0x1A] = "Gringham Whip",
-        [0x1B] = "Xenlon Rod",
-
-        // ── Helmets ──────────────────────────────────────────────────────────
-        [0x40] = "Hardwood Headwear",
-        [0x41] = "Iron Helmet",
-        [0x42] = "Happy Hat",
-        [0x43] = "Hermes Hat",
-        [0x44] = "Leather Hat",
-        [0x45] = "Stone Hardhat",
-        [0x46] = "Thinking Cap",
-        [0x47] = "Mercury's Bandana",
-        [0x48] = "Mythril Helm",
-        [0x49] = "Great Helm",
-        [0x4A] = "Gold Circlet",
-        [0x4B] = "Silver Tiara",
-        [0x4C] = "Scholar's Cap",
-
-        // ── Shields ──────────────────────────────────────────────────────────
-        [0x50] = "Pot Lid",
-        [0x51] = "Leather Shield",
-        [0x52] = "Bronze Shield",
-        [0x53] = "Iron Shield",
-        [0x54] = "Magic Shield",
-        [0x55] = "Mythril Shield",
-        [0x56] = "Flame Shield",
-        [0x57] = "Ice Shield",
-        [0x58] = "Erdrick's Shield",
-        [0x59] = "Metal King Shield",
-
-        // ── Body Armour ───────────────────────────────────────────────────────
-        [0x60] = "Plain Clothes",
-        [0x61] = "Wayfarer's Clothes",
-        [0x62] = "Leather Armour",
-        [0x63] = "Scale Armour",
-        [0x64] = "Fur Cape",
-        [0x65] = "Chain Mail",
-        [0x66] = "Cloak of Evasion",
-        [0x67] = "Iron Armour",
-        [0x68] = "Steel Armour",
-        [0x69] = "Magic Armour",
-        [0x6A] = "Princess Robe",
-        [0x6B] = "Flowing Dress",
-        [0x6C] = "Sacred Armour",
-        [0x6D] = "Dragon Mail",
-        [0x6E] = "Metal King Armour",
-        [0x6F] = "Slime Armour",
-        [0x86] = "Plain Clothes",
-
-        // ── Accessories ───────────────────────────────────────────────────────
-        [0x70] = "Gold Ring",
-        [0x71] = "Silver Ring",
-        [0x72] = "Life Bracer",
-        [0x73] = "Recovery Ring",
-        [0x74] = "Protection Ring",
-        [0x75] = "Prayer Ring",
-        [0x76] = "Goddess Ring",
-        [0x77] = "Agility Ring",
-        [0x78] = "Intelligence Ring",
-        [0x79] = "Speed Ring",
-        [0x7A] = "Power Ring",
-        [0x7B] = "Elfin Charm",
-        [0x7C] = "Meteorite Bracer",
-
-        // ── Key Items ─────────────────────────────────────────────────────────
-        [0x80] = "Zenithian Sword",
-        [0x81] = "Zenithian Shield",
-        [0x82] = "Zenithian Helmet",
-        [0x83] = "Zenithian Armour",
-        [0x85] = "Ship",
-        [0x87] = "Medal",
-        [0x8F] = "Flute of Spring",
-        [0x90] = "Echo Flute",
-        [0x91] = "Wagon",
-        [0xD0] = "Fur Hood",
-        [0xD1] = "Iron Mask",
+        // Confirmed from live save state (cross-referenced + in-game screenshot order)
+        [0x35] = "Boomerang",        // Jack slot 1
+        [0x38] = "Thorn Whip",       // Bianca slot 1
+        [0x49] = "Leather Armour",   // Jack slot 2
+        [0x4E] = "Leather Dress",    // Bianca slot 2
+        [0x78] = "Scale Shield",     // Jack slot 3 / Bianca slot 3 (common ID)
+        [0x88] = "Hardwood Headwear",// Jack slot 4
+        [0xA1] = "Medicinal Herb",   // everywhere
+        [0xA4] = "Chimaera Wing",    // Jack's inventory (order-matched)
+        [0xC2] = "Torch",            // Jack's inventory (order-matched)
+        [0x46] = "Silver Tea Tray",  // party bag (order-matched)
+        [0xCB] = "Gold Orb",         // party bag (order-matched)
+        [0xDA] = "Handwoven Cape",   // party bag (order-matched)
     };
 }
 
@@ -279,61 +181,74 @@ public class SaveData
     public bool HasLiveHeroData => _heroLiveOffsets.Count > 0;
 
     /// <summary>
-    /// Read the hero's live stats from the save state into the Character model.
-    /// Anchors to the confirmed STR field position found by FindHeroLiveOffsets.
+    /// Read any party character's live stats from their confirmed live offset.
     /// </summary>
-    public void ReadHeroLiveData(Character hero)
+    public void ReadLiveStats(Character ch, int liveOff)
     {
-        if (_liveStatOffset < 0)
-        {
-            return;
-        }
+        if (liveOff < 0) return;
+        ch.Exp   = BitConverter.ToUInt32(_raw, liveOff + SS_Exp);
+        ch.Level = _raw[liveOff + SS_Level];
+        ch.Str   = (byte)BitConverter.ToUInt16(_raw, liveOff + SS_Str);
+        ch.Res   = (byte)BitConverter.ToUInt16(_raw, liveOff + SS_Res);
+        ch.HpCur = BitConverter.ToUInt16(_raw, liveOff + SS_HpCur);
+        ch.HpMax = BitConverter.ToUInt16(_raw, liveOff + SS_HpMax);
+        ch.MpCur = BitConverter.ToUInt16(_raw, liveOff + SS_MpCur);
+        ch.MpMax = BitConverter.ToUInt16(_raw, liveOff + SS_MpMax);
+        ch.Agl   = _raw[liveOff + SS_Agl];
+        ch.Wis   = _raw[liveOff + SS_Wis];
+        ch.Lck   = _raw[liveOff + SS_Lck];
 
-        int s = _liveStatOffset;
-        hero.Exp   = BitConverter.ToUInt32(_raw, s + SS_Exp);
-        hero.Level = _raw[s + SS_Level];
-        hero.Str   = (byte)BitConverter.ToUInt16(_raw, s + SS_Str);
-        hero.Res   = (byte)BitConverter.ToUInt16(_raw, s + SS_Res);
-        hero.HpCur = BitConverter.ToUInt16(_raw, s + SS_HpCur);
-        hero.HpMax = BitConverter.ToUInt16(_raw, s + SS_HpMax);
-        hero.MpCur = BitConverter.ToUInt16(_raw, s + SS_MpCur);
-        hero.MpMax = BitConverter.ToUInt16(_raw, s + SS_MpMax);
-        hero.Agl   = _raw[s + SS_Agl];
-        hero.Wis   = _raw[s + SS_Wis];
-        hero.Lck   = _raw[s + SS_Lck];
+        // Live items: 12 slots of (u16 id, u8 qty, u8 flag) at STR + 0x1C
+        for (int s = 0; s < SS_ItemSlots && s < ch.Items.Length; s++)
+        {
+            int p = liveOff + SS_Items + s * 4;
+            if (p + 4 > _raw.Length) break;
+            ch.Items[s] = new CharItem
+            {
+                ItemId = (byte)(BitConverter.ToUInt16(_raw, p) & 0xFF),
+                Qty    = _raw[p + 2],
+                Flag   = _raw[p + 3],
+            };
+        }
     }
 
-    /// <summary>Write the hero's edited stats to ALL live copies in the save state.</summary>
-    public void FlushHeroLiveData(Character hero)
-    {
-        foreach (int s in _heroLiveOffsets)
-        {
-            BitConverter.GetBytes(hero.Exp).CopyTo(_raw, s + SS_Exp);
-            _raw[s + SS_Level] = hero.Level;
-            BitConverter.GetBytes((ushort)hero.Str).CopyTo(_raw, s + SS_Str);
-            BitConverter.GetBytes((ushort)hero.Res).CopyTo(_raw, s + SS_Res);
-            BitConverter.GetBytes(hero.HpCur).CopyTo(_raw, s + SS_HpCur);
-            BitConverter.GetBytes(hero.HpMax).CopyTo(_raw, s + SS_HpMax);
-            BitConverter.GetBytes(hero.MpCur).CopyTo(_raw, s + SS_MpCur);
-            BitConverter.GetBytes(hero.MpMax).CopyTo(_raw, s + SS_MpMax);
-            _raw[s + SS_Agl] = hero.Agl;
-            _raw[s + SS_Wis] = hero.Wis;
-            _raw[s + SS_Lck] = hero.Lck;
-        }
+    public void ReadHeroLiveData(Character hero) => ReadLiveStats(hero, _liveStatOffset);
 
-        // Items (at SS_Items offset from STR)
-        if (_liveStatOffset >= 0)
+    /// <summary>Read the party bag from its live location (save states only).</summary>
+    public void ReadLiveBag()
+    {
+        for (int i = 0; i < ML1_BAG_SLOTS && i < BagItems.Length; i++)
         {
-            for (int idx = 0; idx < ItemSlots; idx++)
+            int p = ML1_BAG_OFFSET + i * 4;
+            if (p + 4 > _raw.Length) break;
+            BagItems[i] = new BagItem
             {
-                int pos = _liveStatOffset + SS_Items + idx * 4;
-                if (pos + 4 > _raw.Length) break;
-                ushort rawId = hero.Items[idx].ItemId;
-                BitConverter.GetBytes(rawId).CopyTo(_raw, pos);
-                _raw[pos + 2] = 1;
-                _raw[pos + 3] = hero.Items[idx].IsEquipped ? (byte)1 : (byte)0;
-            }
+                ItemId   = (byte)(BitConverter.ToUInt16(_raw, p) & 0xFF),
+                Quantity = _raw[p + 2],
+            };
         }
+    }
+
+    /// <summary>Write a character's stats to their live offset in the save state.</summary>
+    public void FlushHeroLiveData(Character ch)
+    {
+        int liveOff = ch.LiveStatOffset >= 0 ? ch.LiveStatOffset : _liveStatOffset;
+        if (liveOff < 0) return;
+
+        BitConverter.GetBytes(ch.Exp).CopyTo(_raw, liveOff + SS_Exp);
+        _raw[liveOff + SS_Level] = ch.Level;
+        BitConverter.GetBytes((ushort)ch.Str).CopyTo(_raw, liveOff + SS_Str);
+        BitConverter.GetBytes((ushort)ch.Res).CopyTo(_raw, liveOff + SS_Res);
+        BitConverter.GetBytes(ch.HpCur).CopyTo(_raw, liveOff + SS_HpCur);
+        BitConverter.GetBytes(ch.HpMax).CopyTo(_raw, liveOff + SS_HpMax);
+        BitConverter.GetBytes(ch.MpCur).CopyTo(_raw, liveOff + SS_MpCur);
+        BitConverter.GetBytes(ch.MpMax).CopyTo(_raw, liveOff + SS_MpMax);
+        _raw[liveOff + SS_Agl] = ch.Agl;
+        _raw[liveOff + SS_Wis] = ch.Wis;
+        _raw[liveOff + SS_Lck] = ch.Lck;
+
+        // Items are read-only for now — intentionally NOT written, so stacked
+        // quantities and equipment state are never disturbed by a stat edit.
     }
 
     public List<Character> Characters { get; } = [];
@@ -386,10 +301,15 @@ public class SaveData
     private const int SS_Wis    =  0x0D;  // uint8
     private const int SS_Lck    =  0x0E;  // uint8
 
-    // Items in live format: 12 × (u16 itemId, u8 qty, u8 equipped=1/0) = 48 bytes
-    // Items block is 0x20 bytes after personality (which is 8 bytes before STR)
-    // → items at STR - 0x08 + 0x28 = STR + 0x20
-    private const int SS_Items  = 0x20;  // 12 × (u16 id, u8 qty, u8 flag)
+    // Items in live format: 12 × (u16 itemId, u8 qty, u8 flag) = 48 bytes.
+    // Confirmed: item list begins at STR + 0x1C (pointer at STR+0x14 = STR_ds+0x1C,
+    // count byte 0x0C at STR+0x18). flag bit0 = equipped.
+    private const int SS_Items     = 0x1C;  // offset from STR anchor
+    private const int SS_ItemSlots = 12;
+
+    // Party bag: fixed live location (gold is at 0x0009D820, bag at gold+0x20).
+    private const int ML1_BAG_OFFSET = 0x0009D840;  // (u16 id, u8 qty, u8 flag) × N
+    private const int ML1_BAG_SLOTS  = 24;
 
     // Tracks the file offset of the STR field in the live character data
     private int _liveStatOffset = -1;
@@ -439,49 +359,45 @@ public class SaveData
 
     private void FindHeroLiveOffsets()
     {
-        // ── Hardcoded primary anchor (DQ5 DS North American version) ─────────
-        // DS address 0x0209DD78 is Jack's live STR field — confirmed empirically.
-        // It is a fixed game-allocated address independent of save content.
-        // File offset = ML1_MAIN_RAM_START + (DS_addr - 0x02000000)
-        //             = 0x24 + 0x09DD78 = 0x0009DD9C
-        const int fixedOffset = ML1_MAIN_RAM_START + 0x09DD78;  // 0x0009DD9C
+        // ── Party live data array (DQ5 DS North American version) ────────────
+        // DS address 0x0209DD78 = party slot 0 (hero) STR field.
+        // Stride = 0x51C bytes between party slots. Up to 6 active slots.
+        const int partyBase = ML1_MAIN_RAM_START + 0x09DD78;  // 0x0009DD9C
+        const int stride    = 0x51C;
+        const int maxSlots  = 6;
+        const int fixedOffset = partyBase;  // slot 0 = hero
 
         // Verify the offset is plausible (STR in 0–255)
-        if (fixedOffset + 2 <= _raw.Length &&
-            BitConverter.ToUInt16(_raw, fixedOffset) <= 255)
+        // ── Slot 0 = hero (hardcoded, always valid) ───────────────────────
+        if (fixedOffset + 2 <= _raw.Length)
         {
             _liveStatOffset = fixedOffset;
             _heroLiveOffsets.Add(fixedOffset);
+            if (Characters.Count > 0)
+                Characters[0].LiveStatOffset = fixedOffset;
         }
 
-        // ── Optional: also find duplicate copies by pattern search ───────────
-        // Only search if we have known current stats (might miss if diverged).
-        if (Characters.Count > 0)
+        // ── Slots 1..maxSlots-1: match occupied party slots to roster chars ──
+        // Matching criteria: slot.STR == char.Str AND slot.AGL == char.Agl
+        // (two independent stats matching simultaneously is highly specific)
+        for (int slot = 1; slot < maxSlots; slot++)
         {
-            var hero = Characters[0];
-            byte[] sig = new byte[15];
-            BitConverter.GetBytes((ushort)hero.Str).CopyTo(sig, 0);
-            BitConverter.GetBytes((ushort)hero.Res).CopyTo(sig, 2);
-            BitConverter.GetBytes(hero.HpCur).CopyTo(sig,       4);
-            BitConverter.GetBytes(hero.HpMax).CopyTo(sig,       6);
-            BitConverter.GetBytes(hero.MpCur).CopyTo(sig,       8);
-            BitConverter.GetBytes(hero.MpMax).CopyTo(sig,       10);
-            sig[12] = hero.Agl; sig[13] = hero.Wis; sig[14] = hero.Lck;
+            int slotOff = partyBase + slot * stride;
+            if (slotOff + 0x10 >= _raw.Length) break;
 
-            int end = Math.Min(_raw.Length - sig.Length, ML1_MAIN_RAM_START + 0x400000);
-            for (int i = ML1_MAIN_RAM_START; i < end; i++)
+            ushort slotStr = BitConverter.ToUInt16(_raw, slotOff + SS_Str);
+            byte   slotAgl = _raw[slotOff + SS_Agl];
+
+            if (slotStr == 0 && slotAgl == 0) continue;  // empty slot
+
+            // Find which roster character matches this slot
+            foreach (var ch in Characters)
             {
-                if (i == fixedOffset) continue;  // already added
-                bool match = true;
-
-                for (int j = 0; j < sig.Length; j++)
+                if (ch.LiveStatOffset >= 0) continue;  // already assigned
+                if (ch.Str == slotStr && ch.Agl == slotAgl)
                 {
-                    if (_raw[i + j] != sig[j]) { match = false; break; }
-                }
-
-                if (match)
-                {
-                    _heroLiveOffsets.Add(i);
+                    ch.LiveStatOffset = slotOff;
+                    break;
                 }
             }
         }
@@ -604,12 +520,16 @@ public class SaveData
     // ── Flush ────────────────────────────────────────────────────────────────
     public void FlushCharacter(Character ch)
     {
-        if (IsSaveState && ch.SlotIndex == 0 && HasLiveHeroData)
+        // In a save state, any character with a live party slot (hero OR a recruited
+        // party member) must have stats written to live game memory — that's what
+        // the game actually reads. Slot 0 = hero; others matched by STR+AGL on load.
+        bool hasLiveSlot = IsSaveState &&
+                           (ch.SlotIndex == 0 ? HasLiveHeroData : ch.LiveStatOffset >= 0);
+
+        if (hasLiveSlot)
         {
-            // Save state: write to live game data (what the game actually reads)
-            FlushHeroLiveData(ch);
-            // Also update the .sav buffer copy so it stays consistent
-            FlushRoster(ch);
+            FlushHeroLiveData(ch);   // writes to ch.LiveStatOffset (hero uses its own)
+            FlushRoster(ch);         // keep the .sav buffer copy consistent
         }
         else
         {

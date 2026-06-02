@@ -68,16 +68,16 @@ partial class MainForm
         // Items tab
         _itemsGrid      = new DataGridView();
         _itemsSlotCol   = new DataGridViewTextBoxColumn();
-        _itemsNameCol   = new DataGridViewComboBoxColumn();
+        _itemsNameCol   = new DataGridViewTextBoxColumn();
         _itemsIdCol     = new DataGridViewTextBoxColumn();
-        _itemsEquipCol  = new DataGridViewCheckBoxColumn();
+        _itemsEquipCol  = new DataGridViewTextBoxColumn();
         _itemsNote      = new Label();
         _applyItemsBtn  = new Button();
 
         // Bag tab
         _bagGrid       = new DataGridView();
         _bagSlotCol    = new DataGridViewTextBoxColumn();
-        _bagNameCol    = new DataGridViewComboBoxColumn();
+        _bagNameCol    = new DataGridViewTextBoxColumn();
         _bagIdCol      = new DataGridViewTextBoxColumn();
         _bagQtyCol     = new DataGridViewTextBoxColumn();
         _applyBagBtn   = new Button();
@@ -314,10 +314,9 @@ partial class MainForm
         _itemsSlotCol.ReadOnly = true;
         _itemsSlotCol.Width = 30;
 
-        _itemsNameCol.DisplayMember = "Display";
         _itemsNameCol.HeaderText = "Item";
         _itemsNameCol.Name = "ItemName";
-        _itemsNameCol.ValueMember = "Id";
+        _itemsNameCol.ReadOnly = true;
         _itemsNameCol.Width = 220;
 
         _itemsIdCol.HeaderText = "ID";
@@ -331,6 +330,7 @@ partial class MainForm
 
         _itemsGrid.AllowUserToAddRows = false;
         _itemsGrid.AllowUserToDeleteRows = false;
+        _itemsGrid.ReadOnly = true;   // items are read-only (display) for now
         _itemsGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
         _itemsGrid.Columns.AddRange(new DataGridViewColumn[] {
             _itemsSlotCol, _itemsNameCol, _itemsIdCol, _itemsEquipCol });
@@ -338,8 +338,6 @@ partial class MainForm
         _itemsGrid.Name = "_itemsGrid";
         _itemsGrid.RowHeadersVisible = false;
         _itemsGrid.TabIndex = 0;
-        _itemsGrid.CellValueChanged += new DataGridViewCellEventHandler(ItemsGrid_CellValueChanged);
-        _itemsGrid.CurrentCellDirtyStateChanged += new EventHandler(ItemsGrid_DirtyStateChanged);
         _itemsGrid.DataError += new DataGridViewDataErrorEventHandler(Grid_DataError);
 
         _itemsNote.Dock = DockStyle.Bottom;
@@ -348,18 +346,18 @@ partial class MainForm
         _itemsNote.Height = 24;
         _itemsNote.Name = "_itemsNote";
         _itemsNote.Padding = new Padding(4, 0, 0, 0);
-        _itemsNote.Text = "Items with ☑ Equipped are worn (0x80 flag). Un-ticked items are in personal inventory.";
+        _itemsNote.Text = "Items shown with ✔ are equipped. Display is read-only for now.";
         _itemsNote.TextAlign = ContentAlignment.MiddleLeft;
 
-        _applyItemsBtn.BackColor = Color.FromArgb(0, 120, 70);
+        _applyItemsBtn.BackColor = Color.FromArgb(45, 45, 60);
         _applyItemsBtn.Dock = DockStyle.Bottom;
+        _applyItemsBtn.Enabled = false;
         _applyItemsBtn.FlatStyle = FlatStyle.Flat;
-        _applyItemsBtn.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-        _applyItemsBtn.ForeColor = Color.White;
-        _applyItemsBtn.Height = 36;
+        _applyItemsBtn.Font = new Font("Segoe UI", 9F);
+        _applyItemsBtn.ForeColor = Color.Gray;
+        _applyItemsBtn.Height = 28;
         _applyItemsBtn.Name = "_applyItemsBtn";
-        _applyItemsBtn.Text = "✔ Apply Item Changes";
-        _applyItemsBtn.Click += new EventHandler(ApplyItemsBtn_Click);
+        _applyItemsBtn.Text = "Items are read-only (display only)";
 
         // Fill first, then Bottom (note, button) added last so they dock first.
         _itemsTab.Controls.Add(_itemsGrid);
@@ -374,10 +372,9 @@ partial class MainForm
         _bagSlotCol.ReadOnly = true;
         _bagSlotCol.Width = 35;
 
-        _bagNameCol.DisplayMember = "Display";
         _bagNameCol.HeaderText = "Item";
         _bagNameCol.Name = "ItemName";
-        _bagNameCol.ValueMember = "Id";
+        _bagNameCol.ReadOnly = true;
         _bagNameCol.Width = 220;
 
         _bagIdCol.HeaderText = "ID";
@@ -391,6 +388,7 @@ partial class MainForm
 
         _bagGrid.AllowUserToAddRows = false;
         _bagGrid.AllowUserToDeleteRows = false;
+        _bagGrid.ReadOnly = true;   // read-only display for now
         _bagGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
         _bagGrid.Columns.AddRange(new DataGridViewColumn[] {
             _bagSlotCol, _bagNameCol, _bagIdCol, _bagQtyCol });
@@ -398,19 +396,17 @@ partial class MainForm
         _bagGrid.Name = "_bagGrid";
         _bagGrid.RowHeadersVisible = false;
         _bagGrid.TabIndex = 0;
-        _bagGrid.CellValueChanged += new DataGridViewCellEventHandler(BagGrid_CellValueChanged);
-        _bagGrid.CurrentCellDirtyStateChanged += new EventHandler(BagGrid_DirtyStateChanged);
         _bagGrid.DataError += new DataGridViewDataErrorEventHandler(Grid_DataError);
 
-        _applyBagBtn.BackColor = Color.FromArgb(0, 120, 70);
+        _applyBagBtn.BackColor = Color.FromArgb(45, 45, 60);
         _applyBagBtn.Dock = DockStyle.Bottom;
+        _applyBagBtn.Enabled = false;
         _applyBagBtn.FlatStyle = FlatStyle.Flat;
-        _applyBagBtn.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-        _applyBagBtn.ForeColor = Color.White;
-        _applyBagBtn.Height = 36;
+        _applyBagBtn.Font = new Font("Segoe UI", 9F);
+        _applyBagBtn.ForeColor = Color.Gray;
+        _applyBagBtn.Height = 28;
         _applyBagBtn.Name = "_applyBagBtn";
-        _applyBagBtn.Text = "✔ Apply Bag Changes";
-        _applyBagBtn.Click += new EventHandler(ApplyBagBtn_Click);
+        _applyBagBtn.Text = "Party bag is read-only (display only)";
 
         _bagTab.Controls.Add(_bagGrid);
         _bagTab.Controls.Add(_applyBagBtn);
@@ -561,15 +557,15 @@ partial class MainForm
 
     private DataGridView _itemsGrid = null!;
     private DataGridViewTextBoxColumn _itemsSlotCol = null!;
-    private DataGridViewComboBoxColumn _itemsNameCol = null!;
+    private DataGridViewTextBoxColumn _itemsNameCol = null!;
     private DataGridViewTextBoxColumn _itemsIdCol = null!;
-    private DataGridViewCheckBoxColumn _itemsEquipCol = null!;
+    private DataGridViewTextBoxColumn _itemsEquipCol = null!;
     private Label _itemsNote = null!;
     private Button _applyItemsBtn = null!;
 
     private DataGridView _bagGrid = null!;
     private DataGridViewTextBoxColumn _bagSlotCol = null!;
-    private DataGridViewComboBoxColumn _bagNameCol = null!;
+    private DataGridViewTextBoxColumn _bagNameCol = null!;
     private DataGridViewTextBoxColumn _bagIdCol = null!;
     private DataGridViewTextBoxColumn _bagQtyCol = null!;
     private Button _applyBagBtn = null!;

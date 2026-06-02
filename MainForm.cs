@@ -2,12 +2,6 @@ using System.Drawing;
 
 namespace DQ5SaveEditor;
 
-public class ItemEntry(byte id, string display)
-{
-    public byte   Id      { get; } = id;
-    public string Display { get; } = display;
-}
-
 public partial class MainForm : Form
 {
     private SaveData?  _save;
@@ -19,9 +13,6 @@ public partial class MainForm : Form
     {
         InitializeComponent();
         ApplyDarkTheme();
-        // Populate combo-box data sources after controls exist
-        _itemsNameCol.DataSource = GetAllItemSource();
-        _bagNameCol.DataSource   = GetAllItemSource();
     }
 
     // ── Dark theme ────────────────────────────────────────────────────────────
@@ -194,117 +185,15 @@ public partial class MainForm : Form
         for (int s = 0; s < ch.Items.Length; s++)
         {
             var item = ch.Items[s];
-            // Combo column needs a value present in the DataSource.
-            // Normalise unknown/empty IDs to 0x00 ("(empty)") for display.
-            byte displayId = item.IsEmpty || !CharItem.ItemNames.ContainsKey(item.ItemId)
-                ? (byte)0x00 : item.ItemId;
-            _itemsGrid.Rows.Add(s + 1, displayId,
-                item.IsEmpty ? "(empty)" : $"0x{item.ItemId:X2}",
-                item.IsEquipped);
+            if (item == null || item.IsEmpty) continue;   // skip empty slots
+            string name = item.ItemName + (item.Qty > 1 ? $"  x{item.Qty}" : "");
+            _itemsGrid.Rows.Add(s + 1, name, $"0x{item.ItemId:X2}",
+                item.IsEquipped ? "✔" : "");
         }
     }
 
-    private void ItemsGrid_CellValueChanged(object? sender, DataGridViewCellEventArgs e)
-    {
-        if (_selectedChar == null || e.RowIndex < 0)
-        {
-            return;
-        }
-
-        var row  = _itemsGrid.Rows[e.RowIndex];
-        var item = _selectedChar.Items[e.RowIndex];
-
-        if (e.ColumnIndex == _itemsGrid.Columns["ItemName"]!.Index &&
-            row.Cells["ItemName"].Value is byte id)
-        {
-            item.ItemId = id;
-            row.Cells["IdHex"].Value = id == 0 ? "(empty)" : $"0x{id:X2}";
-        }
-        else if (e.ColumnIndex == _itemsGrid.Columns["Equipped"]!.Index)
-        {
-            item.Flag = (row.Cells["Equipped"].Value is true) ? (byte)0x80 : (byte)0x00;
-        }
-    }
-
-    private void ItemsGrid_DirtyStateChanged(object? sender, EventArgs e)
-    {
-        if (_itemsGrid.IsCurrentCellDirty)
-        {
-            _itemsGrid.CommitEdit(DataGridViewDataErrorContexts.Commit);
-        }
-    }
-
-    private void ApplyItemsBtn_Click(object? sender, EventArgs e)
-    {
-        if (_selectedChar == null || _save == null)
-        {
-            return;
-        }
-
-        _save.FlushCharacter(_selectedChar);
-        MarkDirty("Item changes applied.  Use File → Save (Ctrl+S) to write to disk.");
-    }
-
-    // ── Bag grid ──────────────────────────────────────────────────────────────
-    private void BagGrid_CellValueChanged(object? sender, DataGridViewCellEventArgs e)
-    {
-        if (_save == null || e.RowIndex < 0)
-        {
-            return;
-        }
-
-        var row = _bagGrid.Rows[e.RowIndex];
-
-        if (e.ColumnIndex == _bagGrid.Columns["ItemName"]!.Index &&
-            row.Cells["ItemName"].Value is byte id)
-        {
-            _save.BagItems[e.RowIndex].ItemId = id;
-            row.Cells["IdHex"].Value = id == 0 ? "(empty)" : $"0x{id:X2}";
-        }
-        else if (e.ColumnIndex == _bagGrid.Columns["Qty"]!.Index &&
-                 byte.TryParse(row.Cells["Qty"].Value?.ToString(), out byte qty))
-        {
-            _save.BagItems[e.RowIndex].Quantity = qty;
-        }
-    }
-
-    private void BagGrid_DirtyStateChanged(object? sender, EventArgs e)
-    {
-        if (_bagGrid.IsCurrentCellDirty)
-        {
-            _bagGrid.CommitEdit(DataGridViewDataErrorContexts.Commit);
-        }
-    }
-
-    private void ApplyBagBtn_Click(object? sender, EventArgs e)
-    {
-        CommitBag();
-        MarkDirty("Party bag changes applied.  Use File → Save (Ctrl+S) to write to disk.");
-    }
-
-    private void CommitBag()
-    {
-        if (_save == null)
-        {
-            return;
-        }
-
-        for (int i = 0; i < SaveData.BagItemSlots; i++)
-        {
-            var row = _bagGrid.Rows[i];
-            if (row.Cells["ItemName"].Value is byte id)
-            {
-                _save.BagItems[i].ItemId = id;
-            }
-
-            if (byte.TryParse(row.Cells["Qty"].Value?.ToString(), out byte qty))
-            {
-                _save.BagItems[i].Quantity = qty;
-            }
-
-            _save.FlushBagItem(i);
-        }
-    }
+    // ── Bag / item display is read-only; no edit handlers needed. ──────────────
+    private void CommitBag() { /* read-only: no-op */ }
 
     // ── File operations ───────────────────────────────────────────────────────
     private void OpenFile()
@@ -411,10 +300,17 @@ public partial class MainForm : Form
             _charList.Items.Add(ch);
         }
 
-        // For save states, overwrite the .sav-buffer values with the live in-game data
-        if (_save.IsSaveState && _save.HasLiveHeroData && _save.Characters.Count > 0)
+        // For save states, read live in-game data for every party character + bag
+        if (_save.IsSaveState && _save.HasLiveHeroData)
         {
-            _save.ReadHeroLiveData(_save.Characters[0]);
+            foreach (var ch in _save.Characters)
+            {
+                if (ch.SlotIndex == 0)
+                    _save.ReadHeroLiveData(ch);
+                else if (ch.LiveStatOffset >= 0)
+                    _save.ReadLiveStats(ch, ch.LiveStatOffset);
+            }
+            _save.ReadLiveBag();
         }
 
         if (_charList.Items.Count > 0)
@@ -437,12 +333,8 @@ public partial class MainForm : Form
         for (int i = 0; i < SaveData.BagItemSlots; i++)
         {
             var item = _save.BagItems[i];
-            // Normalise unknown/empty IDs (0xFF, 0xD5, or any ID not in the name table)
-            // to 0x00 so the ComboBox column always has a valid DataSource entry.
-            byte displayId = item.IsEmpty || !CharItem.ItemNames.ContainsKey(item.ItemId)
-                ? (byte)0x00 : item.ItemId;
-            _bagGrid.Rows.Add(i + 1, displayId,
-                item.IsEmpty ? "(empty)" : $"0x{item.ItemId:X2}",
+            if (item == null || item.IsEmpty) continue;   // skip empty slots
+            _bagGrid.Rows.Add(i + 1, item.ItemName, $"0x{item.ItemId:X2}",
                 item.Quantity.ToString());
         }
     }
@@ -450,18 +342,7 @@ public partial class MainForm : Form
     // Shared DataError handler — suppresses the default error dialog for both grids.
     private void Grid_DataError(object? sender, DataGridViewDataErrorEventArgs e)
     {
-        e.Cancel = true;   // prevent error dialog; cell shows blank instead
-    }
-
-    private List<ItemEntry> GetAllItemSource()
-    {
-        var list = new List<ItemEntry> { new(0x00, "(empty)") };
-        foreach (var kvp in CharItem.ItemNames.Where(k => k.Key != 0).OrderBy(k => k.Key))
-        {
-            list.Add(new(kvp.Key, $"0x{kvp.Key:X2}  {kvp.Value}"));
-        }
-
-        return list;
+        e.Cancel = true;
     }
 
     // ── Dirty-state helpers ───────────────────────────────────────────────────
