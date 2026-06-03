@@ -185,7 +185,11 @@ public partial class MainForm : Form
         for (int s = 0; s < ch.Items.Length; s++)
         {
             var item = ch.Items[s];
-            if (item == null || item.IsEmpty) continue;   // skip empty slots
+            if (item == null || item.IsEmpty)
+            {
+                continue;   // skip empty slots
+            }
+
             string name = item.ItemName + (item.Qty > 1 ? $"  x{item.Qty}" : "");
             _itemsGrid.Rows.Add(s + 1, name, $"0x{item.ItemId:X2}",
                 item.IsEquipped ? "✔" : "");
@@ -306,9 +310,13 @@ public partial class MainForm : Form
             foreach (var ch in _save.Characters)
             {
                 if (ch.SlotIndex == 0)
+                {
                     _save.ReadHeroLiveData(ch);
+                }
                 else if (ch.LiveStatOffset >= 0)
+                {
                     _save.ReadLiveStats(ch, ch.LiveStatOffset);
+                }
             }
             _save.ReadLiveBag();
         }
@@ -333,7 +341,11 @@ public partial class MainForm : Form
         for (int i = 0; i < SaveData.BagItemSlots; i++)
         {
             var item = _save.BagItems[i];
-            if (item == null || item.IsEmpty) continue;   // skip empty slots
+            if (item == null || item.IsEmpty)
+            {
+                continue;   // skip empty slots
+            }
+
             _bagGrid.Rows.Add(i + 1, item.ItemName, $"0x{item.ItemId:X2}",
                 item.Quantity.ToString());
         }
@@ -377,6 +389,7 @@ public partial class MainForm : Form
             "Unsaved Changes",
             MessageBoxButtons.YesNoCancel,
             MessageBoxIcon.Warning);
+
         if (r == DialogResult.Yes) 
         { 
             SaveFile(); return !_isDirty; 
