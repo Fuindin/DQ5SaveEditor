@@ -47,6 +47,13 @@ public class Character
     /// -1 = not in active party / not found.</summary>
     public int LiveStatOffset { get; set; } = -1;
 
+    // ── Recruited monster ─────────────────────────────────────────────────────
+    // True for a monster companion found in the live party array but absent from
+    // the human roster. Monsters have NO roster record, so they are edited via
+    // the live struct only (never flushed to the .sav roster).
+    public bool IsMonster { get; set; }
+    public int  SpeciesId { get; set; } = -1;   // monster species id (live slot @-0x28)
+
     public bool IsEmpty => string.IsNullOrEmpty(Name);
 
     public override string ToString() => IsEmpty ? $"(empty slot {SlotIndex})" : Name;
@@ -421,6 +428,10 @@ public class SaveData
     private const int SS_Agl    =  0x0C;  // uint8
     private const int SS_Wis    =  0x0D;  // uint8
     private const int SS_Lck    =  0x0E;  // uint8
+    // Identity id stored ahead of the STR anchor: for humans this equals their
+    // roster id (Jack=0x01, Harry=0x07); for a recruited monster it is the
+    // monster's species id (confirmed 0x28 for the user's Lv2 companion).
+    private const int SS_SpeciesId = -0x28;  // uint16
 
     // Items in live format: 12 × (u16 itemId, u8 qty, u8 flag) = 48 bytes.
     // Confirmed: item list begins at STR + 0x1C (pointer at STR+0x14 = STR_ds+0x1C,
@@ -503,7 +514,9 @@ public class SaveData
 
         // ── Slots 1..maxSlots-1: match occupied party slots to roster chars ──
         // Matching criteria: slot.STR == char.Str AND slot.AGL == char.Agl
-        // (two independent stats matching simultaneously is highly specific)
+        // (two independent stats matching simultaneously is highly specific).
+        // An occupied slot that matches NO human roster entry is a recruited
+        // monster — monsters live only in this array, not in the .sav roster.
         for (int slot = 1; slot < maxSlots; slot++)
         {
             int slotOff = partyBase + slot * stride;
@@ -513,14 +526,16 @@ public class SaveData
             }
 
             ushort slotStr = BitConverter.ToUInt16(_raw, slotOff + SS_Str);
+            ushort slotHp  = BitConverter.ToUInt16(_raw, slotOff + SS_HpMax);
             byte   slotAgl = _raw[slotOff + SS_Agl];
 
-            if (slotStr == 0 && slotAgl == 0)
+            if (slotStr == 0 && slotAgl == 0 && slotHp == 0)
             {
                 continue;  // empty slot
             }
 
             // Find which roster character matches this slot
+            bool matched = false;
             foreach (var ch in Characters)
             {
                 if (ch.LiveStatOffset >= 0)
@@ -531,11 +546,54 @@ public class SaveData
                 if (ch.Str == slotStr && ch.Agl == slotAgl)
                 {
                     ch.LiveStatOffset = slotOff;
+                    matched = true;
                     break;
                 }
             }
+
+            if (!matched)
+            {
+                AddMonsterFromLiveSlot(slotOff);
+            }
         }
     }
+
+    /// <summary>
+    /// Create a synthetic party member for an occupied live slot with no matching
+    /// human roster entry — i.e. a recruited monster. Stats are read later via the
+    /// normal live-stat path; only identity is set up here.
+    /// </summary>
+    private void AddMonsterFromLiveSlot(int slotOff)
+    {
+        int species = (slotOff + SS_SpeciesId >= 0 && slotOff + SS_SpeciesId + 2 <= _raw.Length)
+            ? BitConverter.ToUInt16(_raw, slotOff + SS_SpeciesId)
+            : -1;
+
+        Characters.Add(new Character
+        {
+            SlotIndex      = -1,            // not a roster slot
+            RosterOffset   = -1,
+            ActiveOffset   = -1,
+            IsMonster      = true,
+            SpeciesId      = species,
+            LiveStatOffset = slotOff,
+            Name           = MonsterName(species),
+        });
+    }
+
+    /// <summary>
+    /// Display name for a recruited monster. DQ5 generates default monster names
+    /// from a ROM species table (not stored in the save unless renamed), so until
+    /// that table is mapped we label by species id. Confirmed entries go here.
+    /// </summary>
+    public static string MonsterName(int species) =>
+        MonsterNames.TryGetValue(species, out var n) ? n : $"Monster (sp.{species})";
+
+    private static readonly Dictionary<int, string> MonsterNames = new()
+    {
+        // Populate as species ids are confirmed against in-game names.
+        [40] = "Brownie",   // 0x28 — confirmed vs in-game status screen (Lv2 Whacka)
+    };
 
     private static SaveData LoadCommon(byte[] raw, int fileBase, bool isSaveState)
     {
@@ -654,6 +712,18 @@ public class SaveData
     // ── Flush ────────────────────────────────────────────────────────────────
     public void FlushCharacter(Character ch)
     {
+        // Recruited monsters exist only in the live party array — they have no
+        // .sav roster record, so write live stats and nothing else.
+        if (ch.IsMonster)
+        {
+            if (ch.LiveStatOffset >= 0)
+            {
+                FlushHeroLiveData(ch);
+            }
+
+            return;
+        }
+
         // In a save state, any character with a live party slot (hero OR a recruited
         // party member) must have stats written to live game memory — that's what
         // the game actually reads. Slot 0 = hero; others matched by STR+AGL on load.
