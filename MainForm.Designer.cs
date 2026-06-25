@@ -100,10 +100,17 @@ partial class MainForm
         _bottomStrip.SuspendLayout();
         _quickBtnFlow.SuspendLayout();
         _statsRows.SuspendLayout();
-        foreach (var n in new System.ComponentModel.ISupportInitialize[] {
-            _levelField, _strField, _resField, _aglField, _wisField, _lckField,
-            _expField, _hpCurField, _hpMaxField, _mpCurField, _mpMaxField })
-            n.BeginInit();
+        ((System.ComponentModel.ISupportInitialize)_levelField).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)_strField).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)_resField).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)_aglField).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)_wisField).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)_lckField).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)_expField).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)_hpCurField).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)_hpMaxField).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)_mpCurField).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)_mpMaxField).BeginInit();
         ((System.ComponentModel.ISupportInitialize)_itemsGrid).BeginInit();
         ((System.ComponentModel.ISupportInitialize)_bagGrid).BeginInit();
         _status.SuspendLayout();
@@ -468,10 +475,17 @@ partial class MainForm
         _bottomStrip.ResumeLayout(false);
         _quickBtnFlow.ResumeLayout(false);
         _statsRows.ResumeLayout(false);
-        foreach (var n in new System.ComponentModel.ISupportInitialize[] {
-            _levelField, _strField, _resField, _aglField, _wisField, _lckField,
-            _expField, _hpCurField, _hpMaxField, _mpCurField, _mpMaxField })
-            n.EndInit();
+        ((System.ComponentModel.ISupportInitialize)_levelField).EndInit();
+        ((System.ComponentModel.ISupportInitialize)_strField).EndInit();
+        ((System.ComponentModel.ISupportInitialize)_resField).EndInit();
+        ((System.ComponentModel.ISupportInitialize)_aglField).EndInit();
+        ((System.ComponentModel.ISupportInitialize)_wisField).EndInit();
+        ((System.ComponentModel.ISupportInitialize)_lckField).EndInit();
+        ((System.ComponentModel.ISupportInitialize)_expField).EndInit();
+        ((System.ComponentModel.ISupportInitialize)_hpCurField).EndInit();
+        ((System.ComponentModel.ISupportInitialize)_hpMaxField).EndInit();
+        ((System.ComponentModel.ISupportInitialize)_mpCurField).EndInit();
+        ((System.ComponentModel.ISupportInitialize)_mpMaxField).EndInit();
         ((System.ComponentModel.ISupportInitialize)_itemsGrid).EndInit();
         ((System.ComponentModel.ISupportInitialize)_bagGrid).EndInit();
         _status.ResumeLayout(false);

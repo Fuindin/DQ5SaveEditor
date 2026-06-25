@@ -54,6 +54,17 @@ public class Character
     public bool IsMonster { get; set; }
     public int  SpeciesId { get; set; } = -1;   // monster species id (live slot @-0x28)
 
+    /// <summary>Display name of the monster's species, "" for humans.</summary>
+    public string SpeciesName => IsMonster ? SaveData.MonsterName(SpeciesId) : string.Empty;
+
+    // ── Extra copies of this character located by name search (save states) ──
+    // A recruited monster is mirrored across several RAM structures. To make an
+    // edit actually stick on F1 reload we must write every main-RAM copy.
+    /// <summary>Name-anchored live struct offsets (anchor = NAME start). Holds EXP/HP/MP.</summary>
+    public List<int> LiveOffsets { get; } = [];
+    /// <summary>Additional roster-format record starts found by name (e.g. the main-RAM roster copy).</summary>
+    public List<int> ExtraRosterOffsets { get; } = [];
+
     public bool IsEmpty => string.IsNullOrEmpty(Name);
 
     public override string ToString() => IsEmpty ? $"(empty slot {SlotIndex})" : Name;
@@ -82,6 +93,14 @@ public class CharItem
     {
         [0x00] = "(empty)",
         [0x01] = "Cypress stick",
+        // Early weapons (confirmed via live-save calibration, June 2026)
+        [0x03] = "Stone axe",
+        [0x07] = "Steel fangs",
+        [0x0C] = "Steel broadsword",
+        [0x1B] = "Zenithian Sword",
+        [0x29] = "Giant mallet",
+        [0x2A] = "Sledgehammer",
+        [0x2D] = "Iron claw",
         // Weapons / armour / shields / helmets (0x35-0x8B)
         [0x35] = "Boomerang",
         [0x36] = "Edged boomerang",
@@ -170,6 +189,9 @@ public class CharItem
         [0x89] = "Shellmet",
         [0x8A] = "Hairband",
         [0x8B] = "Fur hood",
+        [0x8D] = "Iron helmet",
+        // Accessories
+        [0x9A] = "Bianca's ribbon",
         // Consumables / seeds (0xA1-0xAF)
         [0xA1] = "Medicinal herb",
         [0xA2] = "Antidotal herb",
@@ -186,7 +208,13 @@ public class CharItem
         [0xAD] = "Seed of resilience",
         [0xAE] = "Seed of agility",
         [0xAF] = "Seed of wisdom",
-        // Tools / keys / quest (0xC2-0xD2)
+        // Special / misc (confirmed via calibration)
+        [0xB2] = "T 'n' T ticket",
+        [0xB4] = "Night light",
+        [0xB5] = "Monster munchies",
+        [0xB9] = "Elfin elixir",
+        // Tools / keys / quest
+        [0xC1] = "Ra's mirror",
         [0xC2] = "Torch",
         [0xC3] = "Herald of Spring",
         [0xC4] = "Lunar Zoombloom",
@@ -204,7 +232,10 @@ public class CharItem
         [0xD0] = "Ultimate key",
         [0xD1] = "Mini medal",
         [0xD2] = "Adventurer's map",
+        [0xD3] = "Pankraz's letter",
+        [0xD7] = "Zizzwizz Pillow",
         [0xDA] = "Silver tea tray",
+        [0xE1] = "Crude image",
     };
 }
 
@@ -225,7 +256,10 @@ public class SaveData
     // Roster: one 0x44-byte record per character, first entry = Jack (hero)
     private const int RosterStart = 0x857;
     private const int CharStride = 0x44;
-    private const int MaxCharSlots = 20;
+    // Humans occupy the first ~17 slots; the monster den (up to 80 slots) follows
+    // in the same array, then padding/other data. Scan the whole array; the parse
+    // loop skips padding and stops when it reaches non-record data.
+    private const int MaxCharSlots = 100;
 
     // Active slots: same stride, grow DOWNWARD from (RosterStart - CharStride)
     // Slot 0 (hero) active = RosterStart - CharStride = 0x813
@@ -380,7 +414,10 @@ public class SaveData
     }
 
     public List<Character> Characters { get; } = [];
-    public BagItem[] BagItems { get; } = new BagItem[BagItemSlots];
+    public BagItem[] BagItems { get; } = new BagItem[ML1_BAG_SLOTS];
+
+    /// <summary>Number of bag slots to display for the loaded file's format.</summary>
+    public int BagSlotCount => IsSaveState ? ML1_BAG_SLOTS : BagItemSlots;
 
     private SaveData(byte[] raw, int fileBase, bool isSaveState)
     {
@@ -441,7 +478,36 @@ public class SaveData
 
     // Party bag: fixed live location (gold is at 0x0009D820, bag at gold+0x20).
     private const int ML1_BAG_OFFSET = 0x0009D840;  // (u16 id, u8 qty, u8 flag) × N
-    private const int ML1_BAG_SLOTS  = 24;
+    // The live party bag holds far more than the old .sav-era 24 (the in-game list
+    // pages through ~6×6). Read generously; the slots past the contents are zero
+    // padding (the region runs clear up to the party array at 0x9DD9C) and the grid
+    // simply skips empty slots.
+    private const int ML1_BAG_SLOTS  = 80;
+
+    // ── Name-anchored live struct (recruited monsters) ───────────────────────
+    // Every recruited monster (wagon AND stored at the monster park) keeps a live
+    // record in main RAM whose fields are offset from the NAME start. This is the
+    // only copy that holds a stored monster's real EXP/HP/MP. Distinct from the
+    // STR-anchored battle array (SS_* above): here the anchor is the name.
+    //   name+0x24 EXP(u32), name+0x28 STR(u16), name+0x2A RES(u16),
+    //   name+0x2C HPcur, name+0x2E HPmax, name+0x30 MPcur, name+0x32 MPmax,
+    //   name+0x34 AGL(u8), name+0x35 WIS(u8), name+0x36 LCK(u8), name+0x37 Level(u8)
+    private const int NM_Exp   = 0x24;
+    private const int NM_Str   = 0x28;
+    private const int NM_Res   = 0x2A;
+    private const int NM_HpCur = 0x2C;
+    private const int NM_HpMax = 0x2E;
+    private const int NM_MpCur = 0x30;
+    private const int NM_MpMax = 0x32;
+    private const int NM_Agl   = 0x34;
+    private const int NM_Wis   = 0x35;
+    private const int NM_Lck   = 0x36;
+    private const int NM_Level = 0x37;
+
+    // Main RAM occupies file offsets [ML1_MAIN_RAM_START, MainRamEnd). Only edits
+    // inside this window take effect when the state is reloaded with F1 (the SRAM
+    // image copy that sits beyond it is only re-read on a cold "Continue").
+    private const int MainRamEnd = ML1_MAIN_RAM_START + 0x400000;
 
     // Tracks the file offset of the STR field in the live character data
     private int _liveStatOffset = -1;
@@ -484,7 +550,8 @@ public class SaveData
         var save = new SaveData(raw, savBufBase, true);
         save.ParseCharacters();
         save.ParseBagItems();
-        save.FindHeroLiveOffsets();   // locate live character data in main RAM
+        save.FindHeroLiveOffsets();    // locate live battle-array data in main RAM
+        save.FindMonsterLiveData();    // locate every recruited monster's live copies
 
         return save;
     }
@@ -496,7 +563,7 @@ public class SaveData
         // Stride = 0x51C bytes between party slots. Up to 6 active slots.
         const int partyBase = ML1_MAIN_RAM_START + 0x09DD78;  // 0x0009DD9C
         const int stride    = 0x51C;
-        const int maxSlots  = 6;
+        const int maxSlots  = 8;             // wagon holds up to 8 active members
         const int fixedOffset = partyBase;  // slot 0 = hero
 
         // Verify the offset is plausible (STR in 0–255)
@@ -513,10 +580,10 @@ public class SaveData
         }
 
         // ── Slots 1..maxSlots-1: match occupied party slots to roster chars ──
-        // Matching criteria: slot.STR == char.Str AND slot.AGL == char.Agl
-        // (two independent stats matching simultaneously is highly specific).
-        // An occupied slot that matches NO human roster entry is a recruited
-        // monster — monsters live only in this array, not in the .sav roster.
+        // Each slot stores the character's species id at SS_SpeciesId (= the roster
+        // Id byte, unique per roster entry), so that is the authoritative key. STR+AGL
+        // is only a fallback. Matching on stats alone was unsafe: two members could
+        // share a stat signature, causing an edit to be written into the wrong slot.
         for (int slot = 1; slot < maxSlots; slot++)
         {
             int slotOff = partyBase + slot * stride;
@@ -525,60 +592,188 @@ public class SaveData
                 break;
             }
 
-            ushort slotStr = BitConverter.ToUInt16(_raw, slotOff + SS_Str);
-            ushort slotHp  = BitConverter.ToUInt16(_raw, slotOff + SS_HpMax);
-            byte   slotAgl = _raw[slotOff + SS_Agl];
+            ushort slotStr     = BitConverter.ToUInt16(_raw, slotOff + SS_Str);
+            ushort slotHp      = BitConverter.ToUInt16(_raw, slotOff + SS_HpMax);
+            byte   slotAgl     = _raw[slotOff + SS_Agl];
+            ushort slotSpecies = BitConverter.ToUInt16(_raw, slotOff + SS_SpeciesId);
 
             if (slotStr == 0 && slotAgl == 0 && slotHp == 0)
             {
                 continue;  // empty slot
             }
 
-            // Find which roster character matches this slot
-            bool matched = false;
-            foreach (var ch in Characters)
-            {
-                if (ch.LiveStatOffset >= 0)
-                {
-                    continue;  // already assigned
-                }
+            // Primary: species/id AND stat signature both agree (safest — also
+            // disambiguates two members that share a species, e.g. two Slimes).
+            Character? match = Find(c => c.Id == slotSpecies && c.Str == slotStr && c.Agl == slotAgl)
+                            ?? Find(c => c.Id == slotSpecies)          // id only
+                            ?? Find(c => c.Str == slotStr && c.Agl == slotAgl);  // legacy stat-only
 
-                if (ch.Str == slotStr && ch.Agl == slotAgl)
-                {
-                    ch.LiveStatOffset = slotOff;
-                    matched = true;
-                    break;
-                }
+            if (match != null)
+            {
+                match.LiveStatOffset = slotOff;
             }
 
-            if (!matched)
+            Character? Find(Func<Character, bool> pred)
             {
-                AddMonsterFromLiveSlot(slotOff);
+                foreach (var ch in Characters)
+                {
+                    if (ch.LiveStatOffset < 0 && pred(ch))
+                    {
+                        return ch;
+                    }
+                }
+                return null;
             }
         }
     }
 
     /// <summary>
-    /// Create a synthetic party member for an occupied live slot with no matching
-    /// human roster entry — i.e. a recruited monster. Stats are read later via the
-    /// normal live-stat path; only identity is set up here.
+    /// Locate every recruited monster's main-RAM copies by searching for its name.
+    /// A monster is mirrored across a name-anchored live struct (holds the real
+    /// EXP/HP/MP, even for monsters stored at the park) and one or more roster-format
+    /// copies. Records the offsets so edits can be written to all of them, and reads
+    /// the authoritative live stats for display.
     /// </summary>
-    private void AddMonsterFromLiveSlot(int slotOff)
+    private void FindMonsterLiveData()
     {
-        int species = (slotOff + SS_SpeciesId >= 0 && slotOff + SS_SpeciesId + 2 <= _raw.Length)
-            ? BitConverter.ToUInt16(_raw, slotOff + SS_SpeciesId)
-            : -1;
+        int scanEnd = Math.Min(MainRamEnd, _raw.Length);
 
-        Characters.Add(new Character
+        foreach (var ch in Characters)
         {
-            SlotIndex      = -1,            // not a roster slot
-            RosterOffset   = -1,
-            ActiveOffset   = -1,
-            IsMonster      = true,
-            SpeciesId      = species,
-            LiveStatOffset = slotOff,
-            Name           = MonsterName(species),
-        });
+            if (!ch.IsMonster || ch.IsEmpty)
+            {
+                continue;
+            }
+
+            byte[] name = Encoding.ASCII.GetBytes(ch.Name);
+            if (name.Length == 0)
+            {
+                continue;
+            }
+
+            for (int i = 0; i <= scanEnd - name.Length; i++)
+            {
+                if (_raw[i] != name[0])
+                {
+                    continue;
+                }
+
+                bool match = true;
+                for (int j = 1; j < name.Length; j++)
+                {
+                    if (_raw[i + j] != name[j]) { match = false; break; }
+                }
+                if (!match)
+                {
+                    continue;
+                }
+
+                // Require a name terminator so we don't match a longer string.
+                byte term = i + name.Length < _raw.Length ? _raw[i + name.Length] : (byte)0;
+                if (term != 0x00 && term != 0xD5)
+                {
+                    continue;
+                }
+
+                // Classify the copy by its surrounding fields (validated against the
+                // roster values, which equal the live values on a consistent save).
+                if (IsLiveNameStruct(i, ch))
+                {
+                    ch.LiveOffsets.Add(i);
+                }
+                else if (IsRosterCopy(i, ch))
+                {
+                    ch.ExtraRosterOffsets.Add(i - Off_Name);   // record start
+                }
+            }
+
+            // Load the authoritative live stats (EXP/HP/MP) for display.
+            if (ch.LiveOffsets.Count > 0)
+            {
+                ReadLiveNameAnchored(ch, ch.LiveOffsets[0]);
+            }
+        }
+    }
+
+    private bool IsLiveNameStruct(int nameOff, Character ch)
+    {
+        if (nameOff + NM_Level >= _raw.Length)
+        {
+            return false;
+        }
+
+        // Validate several independent fields so a shared name (the player can rename
+        // monsters) can never bind one monster's edit onto another's live struct.
+        return BitConverter.ToUInt16(_raw, nameOff + NM_Str) == ch.Str
+            && BitConverter.ToUInt16(_raw, nameOff + NM_Res) == ch.Res
+            && _raw[nameOff + NM_Agl]   == ch.Agl
+            && _raw[nameOff + NM_Level] == ch.Level;
+    }
+
+    private bool IsRosterCopy(int nameOff, Character ch)
+    {
+        int rec = nameOff - Off_Name;
+        if (rec < 0 || rec + CharStride > _raw.Length)
+        {
+            return false;
+        }
+
+        return _raw[rec] == (byte)ch.SpeciesId
+            && _raw[rec + Off_Str] == ch.Str
+            && _raw[rec + Off_Level] == ch.Level;
+    }
+
+    /// <summary>Read a monster's live stats from a name-anchored struct.</summary>
+    private void ReadLiveNameAnchored(Character ch, int nameOff)
+    {
+        ch.Exp   = BitConverter.ToUInt32(_raw, nameOff + NM_Exp);
+        ch.Str   = (byte)BitConverter.ToUInt16(_raw, nameOff + NM_Str);
+        ch.Res   = (byte)BitConverter.ToUInt16(_raw, nameOff + NM_Res);
+        ch.HpCur = BitConverter.ToUInt16(_raw, nameOff + NM_HpCur);
+        ch.HpMax = BitConverter.ToUInt16(_raw, nameOff + NM_HpMax);
+        ch.MpCur = BitConverter.ToUInt16(_raw, nameOff + NM_MpCur);
+        ch.MpMax = BitConverter.ToUInt16(_raw, nameOff + NM_MpMax);
+        ch.Agl   = _raw[nameOff + NM_Agl];
+        ch.Wis   = _raw[nameOff + NM_Wis];
+        ch.Lck   = _raw[nameOff + NM_Lck];
+        ch.Level = _raw[nameOff + NM_Level];
+    }
+
+    /// <summary>Write a monster's live stats to a name-anchored struct (name preserved).</summary>
+    private void FlushLiveNameAnchored(Character ch, int nameOff)
+    {
+        if (nameOff < 0 || nameOff + NM_Level >= _raw.Length)
+        {
+            return;
+        }
+
+        BitConverter.GetBytes(ch.Exp).CopyTo(_raw, nameOff + NM_Exp);
+        BitConverter.GetBytes((ushort)ch.Str).CopyTo(_raw, nameOff + NM_Str);
+        BitConverter.GetBytes((ushort)ch.Res).CopyTo(_raw, nameOff + NM_Res);
+        BitConverter.GetBytes(ch.HpCur).CopyTo(_raw, nameOff + NM_HpCur);
+        BitConverter.GetBytes(ch.HpMax).CopyTo(_raw, nameOff + NM_HpMax);
+        BitConverter.GetBytes(ch.MpCur).CopyTo(_raw, nameOff + NM_MpCur);
+        BitConverter.GetBytes(ch.MpMax).CopyTo(_raw, nameOff + NM_MpMax);
+        _raw[nameOff + NM_Agl]   = ch.Agl;
+        _raw[nameOff + NM_Wis]   = ch.Wis;
+        _raw[nameOff + NM_Lck]   = ch.Lck;
+        _raw[nameOff + NM_Level] = ch.Level;
+    }
+
+    /// <summary>Write only the base attributes into a roster-format record (name/EXP/HP/MP untouched).</summary>
+    private void FlushRosterStats(Character ch, int recOff)
+    {
+        if (recOff < 0 || recOff + Off_Level >= _raw.Length)
+        {
+            return;
+        }
+
+        _raw[recOff + Off_Str]   = ch.Str;
+        _raw[recOff + Off_Res]   = ch.Res;
+        _raw[recOff + Off_Agl]   = ch.Agl;
+        _raw[recOff + Off_Wis]   = ch.Wis;
+        _raw[recOff + Off_Lck]   = ch.Lck;
+        _raw[recOff + Off_Level] = ch.Level;
     }
 
     /// <summary>
@@ -591,8 +786,14 @@ public class SaveData
 
     private static readonly Dictionary<int, string> MonsterNames = new()
     {
-        // Populate as species ids are confirmed against in-game names.
-        [40] = "Brownie",   // 0x28 — confirmed vs in-game status screen (Lv2 Whacka)
+        // Species id → species name. Confirmed against in-game status screens.
+        [0x16] = "Slime",            // Gootrude
+        [0x19] = "Dracky",           // Vlad
+        [0x28] = "Brownie",          // Whacka (40)
+        [0x2B] = "Ticking timebomb", // Bomburr
+        [0xC4] = "Rotten apple",     // Adams
+        [0xC5] = "Rotten apple",     // Johnny (confirmed — same species name as 0xC4)
+        [0xD0] = "Funghoul",         // Champ
     };
 
     private static SaveData LoadCommon(byte[] raw, int fileBase, bool isSaveState)
@@ -606,11 +807,30 @@ public class SaveData
 
     private void ParseCharacters()
     {
+        // One contiguous 0x44 array: humans (≈17), then the monster den (up to 80
+        // slots, the storage Monty manages), then 0xD5 padding for empty den slots,
+        // then unrelated data. Releasing a monster can leave a 0xD5 gap mid-den, so
+        // skip padding rather than stopping at it; only stop when the array gives
+        // way to data that is neither a record nor padding.
         for (int i = 0; i < MaxCharSlots; i++)
         {
             int rosterOff = FO(RosterStart + i * CharStride);
 
             if (rosterOff + CharStride > _raw.Length)
+            {
+                break;
+            }
+
+            // 0xD5 is the universal padding byte → empty den slot; keep scanning.
+            if (_raw[rosterOff] == 0xD5)
+            {
+                continue;
+            }
+
+            // A real record begins with a printable name byte. Anything else means
+            // we have run past the den into other save data.
+            byte firstNameByte = _raw[rosterOff + Off_Name];
+            if (firstNameByte < 0x20 || firstNameByte > 0x7E)
             {
                 break;
             }
@@ -637,6 +857,16 @@ public class SaveData
 
         ch.Name = ReadName(rOff + Off_Name, 18);
         ch.PersonalityCode = BitConverter.ToUInt16(_raw, rOff + Off_Personality);
+
+        // Recruited monsters share the human roster but their personality code has
+        // a high byte set (0x1005 / 0x2005) vs 0x0005 for humans. Their Id byte is
+        // the species id.
+        ch.IsMonster = (ch.PersonalityCode & 0xFF00) != 0;
+        if (ch.IsMonster)
+        {
+            ch.SpeciesId = ch.Id;
+        }
+
         ch.Str   = _raw[rOff + Off_Str];
         ch.Res   = _raw[rOff + Off_Res];
         ch.Agl   = _raw[rOff + Off_Agl];
@@ -712,10 +942,26 @@ public class SaveData
     // ── Flush ────────────────────────────────────────────────────────────────
     public void FlushCharacter(Character ch)
     {
-        // Recruited monsters exist only in the live party array — they have no
-        // .sav roster record, so write live stats and nothing else.
+        // Recruited monsters are mirrored across several RAM structures. To make an
+        // edit take effect on an F1 reload we write every located main-RAM copy:
+        //   • name-anchored live structs  → full live data (EXP/HP/MP + attributes)
+        //   • roster-format copies        → base attributes + level
+        //   • the STR-anchored battle array (wagon members) → full live data
+        // The .sav-buffer roster record (RosterOffset) is also written so a cold
+        // "Continue" from SRAM stays consistent.
         if (ch.IsMonster)
         {
+            foreach (int nameOff in ch.LiveOffsets)
+            {
+                FlushLiveNameAnchored(ch, nameOff);
+            }
+
+            FlushRosterStats(ch, ch.RosterOffset);
+            foreach (int recOff in ch.ExtraRosterOffsets)
+            {
+                FlushRosterStats(ch, recOff);
+            }
+
             if (ch.LiveStatOffset >= 0)
             {
                 FlushHeroLiveData(ch);

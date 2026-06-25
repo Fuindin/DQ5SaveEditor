@@ -102,22 +102,63 @@ public partial class MainForm : Form
         var ch = (Character)_charList.Items[e.Index];
         bool sel = (e.State & DrawItemState.Selected) != 0;
 
-        e.Graphics.FillRectangle(
-            new SolidBrush(sel ? Color.FromArgb(70, 70, 120) : Color.FromArgb(30, 30, 45)),
-            e.Bounds);
+        using (var bg = new SolidBrush(sel ? Color.FromArgb(70, 70, 120) : Color.FromArgb(30, 30, 45)))
+        {
+            e.Graphics.FillRectangle(bg, e.Bounds);
+        }
 
         using var nameFont = new Font("Segoe UI", 10F, FontStyle.Bold);
         using var infoFont = new Font("Segoe UI", 8F);
-        e.Graphics.DrawString(ch.Name, nameFont, Brushes.White, e.Bounds.X + 8, e.Bounds.Y + 2);
-        e.Graphics.DrawString(
-            $"Lv{ch.Level}  HP:{ch.HpMax}  MP:{ch.MpMax}",
-            infoFont, new SolidBrush(Color.FromArgb(160, 200, 160)),
-            e.Bounds.X + 8, e.Bounds.Y + 14);
+
+        // Lay the two lines out from the actual font height so the row scales with
+        // DPI instead of relying on fixed pixel offsets (which overlap at >100%).
+        int x = e.Bounds.X + 8;
+        int top = e.Bounds.Y + 2;
+        int nameHeight = (int)Math.Ceiling(nameFont.GetHeight(e.Graphics));
+
+        // Tint monster names so they stand out from the human roster.
+        Color nameColor = ch.IsMonster ? Color.FromArgb(170, 210, 255) : Color.White;
+        using (var nameBrush = new SolidBrush(nameColor))
+        {
+            e.Graphics.DrawString(ch.Name, nameFont, nameBrush, x, top);
+        }
+
+        string info = $"Lv{ch.Level}  HP:{ch.HpMax}  MP:{ch.MpMax}";
+        if (ch.IsMonster && ch.SpeciesName.Length > 0)
+        {
+            info += $"  ·  {ch.SpeciesName}";
+        }
+
+        using (var infoBrush = new SolidBrush(Color.FromArgb(160, 200, 160)))
+        {
+            e.Graphics.DrawString(info, infoFont, infoBrush, x, top + nameHeight);
+        }
+    }
+
+    /// <summary>
+    /// Size each character-list row to fit both text lines at the current DPI.
+    /// Called on load and whenever the DPI changes; fixed heights overlapped on
+    /// high-DPI displays.
+    /// </summary>
+    private void UpdateCharListItemHeight()
+    {
+        if (!_charList.IsHandleCreated)
+        {
+            return;
+        }
+
+        using var nameFont = new Font("Segoe UI", 10F, FontStyle.Bold);
+        using var infoFont = new Font("Segoe UI", 8F);
+        using var g = _charList.CreateGraphics();
+        _charList.ItemHeight = (int)Math.Ceiling(nameFont.GetHeight(g) + infoFont.GetHeight(g)) + 8;
+        _charList.Invalidate();
     }
 
     private void LoadCharIntoEditor(Character ch)
     {
-        _charNameLabel.Text = ch.Name;
+        _charNameLabel.Text = ch.IsMonster && ch.SpeciesName.Length > 0
+            ? $"{ch.Name}  ({ch.SpeciesName})"
+            : ch.Name;
         _levelField.Value  = ch.Level;
         _strField.Value    = ch.Str;
         _resField.Value    = ch.Res;
@@ -338,7 +379,7 @@ public partial class MainForm : Form
 
         _bagGrid.Rows.Clear();
 
-        for (int i = 0; i < SaveData.BagItemSlots; i++)
+        for (int i = 0; i < _save.BagSlotCount; i++)
         {
             var item = _save.BagItems[i];
             if (item == null || item.IsEmpty)
@@ -406,6 +447,27 @@ public partial class MainForm : Form
         }
 
         base.OnFormClosing(e);
+    }
+
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        UpdateCharListItemHeight();
+
+        // Default the two panes to an even 50/50 split; the user can still drag the
+        // splitter afterward. Done here (not in the designer) because the container
+        // now has its real width.
+        int usable = _split.Width - _split.SplitterWidth;
+        if (usable > 0)
+        {
+            _split.SplitterDistance = usable / 2;
+        }
+    }
+
+    protected override void OnDpiChanged(DpiChangedEventArgs e)
+    {
+        base.OnDpiChanged(e);
+        UpdateCharListItemHeight();
     }
 
     private void SetStatus(string msg) => _statusLabel.Text = msg;
