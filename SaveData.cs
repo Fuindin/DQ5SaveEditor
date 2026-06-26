@@ -586,7 +586,10 @@ public class SaveData
         // Stride = 0x51C bytes between party slots. Up to 6 active slots.
         const int partyBase = ML1_MAIN_RAM_START + 0x09DD78;  // 0x0009DD9C
         const int stride    = 0x51C;
-        const int maxSlots  = 8;             // wagon holds up to 8 active members
+        // The travelling party (battle front + wagon) holds up to 12 members; the
+        // children push the count past the old assumption of 8. Slots beyond the
+        // current party are zero or garbage and are filtered by the validity check.
+        const int maxSlots  = 12;
         const int fixedOffset = partyBase;  // slot 0 = hero
 
         // Verify the offset is plausible (STR in 0–255)
@@ -623,6 +626,14 @@ public class SaveData
             if (slotStr == 0 && slotAgl == 0 && slotHp == 0)
             {
                 continue;  // empty slot
+            }
+
+            // A real party slot stores a roster Id byte (0x01-0xFF) as its species.
+            // Slots past the live party hold garbage with the high byte set (e.g.
+            // 0x1080) — reject those so they can't false-match a roster character.
+            if (slotSpecies == 0 || slotSpecies > 0xFF)
+            {
+                continue;
             }
 
             // Primary: species/id AND stat signature both agree (safest — also
