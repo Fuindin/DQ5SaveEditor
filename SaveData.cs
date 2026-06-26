@@ -95,12 +95,19 @@ public class CharItem
         [0x01] = "Cypress stick",
         // Early weapons (confirmed via live-save calibration, June 2026)
         [0x03] = "Stone axe",
+        [0x05] = "Floral parasol",
         [0x07] = "Steel fangs",
         [0x0C] = "Steel broadsword",
+        [0x0D] = "Pankraz's sword",
+        [0x0E] = "Serpent sword",
+        [0x0F] = "Cautery sword",
+        [0x10] = "Dream blade",
         [0x1B] = "Zenithian Sword",
+        [0x23] = "Staff of antimagic",
         [0x29] = "Giant mallet",
         [0x2A] = "Sledgehammer",
         [0x2D] = "Iron claw",
+        [0x2E] = "Fire claw",
         // Weapons / armour / shields / helmets (0x35-0x8B)
         [0x35] = "Boomerang",
         [0x36] = "Edged boomerang",
@@ -189,9 +196,16 @@ public class CharItem
         [0x89] = "Shellmet",
         [0x8A] = "Hairband",
         [0x8B] = "Fur hood",
+        [0x8C] = "Silver tiara",
         [0x8D] = "Iron helmet",
+        [0x8E] = "Top hat",
+        [0x8F] = "Iron mask",
         // Accessories
+        [0x92] = "Wedding veil",
         [0x9A] = "Bianca's ribbon",
+        [0x9C] = "Kamikazee bracer",
+        [0x9E] = "Circle of Fire",
+        [0x9F] = "Circle of Water",
         // Consumables / seeds (0xA1-0xAF)
         [0xA1] = "Medicinal herb",
         [0xA2] = "Antidotal herb",
@@ -210,9 +224,13 @@ public class CharItem
         [0xAF] = "Seed of wisdom",
         // Special / misc (confirmed via calibration)
         [0xB2] = "T 'n' T ticket",
+        [0xB3] = "Tombola ticket",
         [0xB4] = "Night light",
         [0xB5] = "Monster munchies",
+        [0xB6] = "Rockbomb shard",
+        [0xB7] = "Paxa Punch",
         [0xB9] = "Elfin elixir",
+        [0xBB] = "Dieamend",
         // Tools / keys / quest
         [0xC1] = "Ra's mirror",
         [0xC2] = "Torch",
@@ -236,6 +254,11 @@ public class CharItem
         [0xD7] = "Zizzwizz Pillow",
         [0xDA] = "Silver tea tray",
         [0xE1] = "Crude image",
+        [0xE6] = "Honey buns",
+        [0xEB] = "Chocolate medalliyum",
+        [0xEC] = "Maxi medal",
+        [0xFB] = "Chamois",
+        [0xFE] = "Big Book of Beasts",
     };
 }
 
