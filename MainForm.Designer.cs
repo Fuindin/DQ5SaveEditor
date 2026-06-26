@@ -65,7 +65,9 @@ partial class MainForm
         _mpCurLbl  = new Label(); _mpCurField  = new NumericUpDown();
         _mpMaxLbl  = new Label(); _mpMaxField  = new NumericUpDown();
 
-        // Items tab
+        // Items (shown on the Stats tab, beside the stat column)
+        _itemsHost      = new Panel();
+        _itemsHeader    = new Label();
         _itemsGrid      = new DataGridView();
         _itemsSlotCol   = new DataGridViewTextBoxColumn();
         _itemsNameCol   = new DataGridViewTextBoxColumn();
@@ -288,10 +290,11 @@ partial class MainForm
         _mpCurField.Minimum  = 0;   _mpCurField.Maximum  = 9999;
         _mpMaxField.Minimum  = 0;   _mpMaxField.Maximum  = 9999;
 
-        // Stack the rows top-to-bottom inside _statsRows (Fill panel, auto-scroll)
+        // Stack the rows top-to-bottom inside _statsRows (left column, auto-scroll)
         _statsRows.AutoScroll = true;
         _statsRows.BackColor = Color.FromArgb(25, 25, 35);
-        _statsRows.Dock = DockStyle.Fill;
+        _statsRows.Dock = DockStyle.Left;
+        _statsRows.Width = 500;
         _statsRows.Name = "_statsRows";
         _statsRows.Padding = new Padding(8, 4, 8, 4);
         // Add rows last-first so the dock engine places them top-to-bottom
@@ -307,7 +310,24 @@ partial class MainForm
         _statsRows.Controls.Add(_rowStr);
         _statsRows.Controls.Add(_rowLevel);
 
-        // Fill first, Bottom next, Top last — dock engine processes highest-index first.
+        // Items host — right column of the Stats tab: a header above the items grid.
+        _itemsHeader.Dock = DockStyle.Top;
+        _itemsHeader.Height = 26;
+        _itemsHeader.Name = "_itemsHeader";
+        _itemsHeader.Text = "Items  (✔ = equipped)";
+        _itemsHeader.TextAlign = ContentAlignment.MiddleCenter;
+
+        _itemsHost.Dock = DockStyle.Fill;
+        _itemsHost.Name = "_itemsHost";
+        _itemsHost.Padding = new Padding(6, 0, 0, 0);
+        // Fill first (grid), then Top (header) so the header sits above the grid.
+        _itemsHost.Controls.Add(_itemsGrid);
+        _itemsHost.Controls.Add(_itemsHeader);
+        _itemsHost.Controls.Add(_itemsNote);
+
+        // Two columns: stats (Left) + items (Fill). Process order Top→Bottom→Left→Fill,
+        // so add in reverse: Fill, Left, Bottom, Top.
+        _statsTab.Controls.Add(_itemsHost);
         _statsTab.Controls.Add(_statsRows);
         _statsTab.Controls.Add(_bottomStrip);
         _statsTab.Controls.Add(_charNameLabel);
@@ -316,24 +336,32 @@ partial class MainForm
         _statsTab.Text = "Stats";
 
         // ── Items tab ─────────────────────────────────────────────────────────
+        // "#" stays a narrow fixed column; Item/ID/Equipped split the remaining
+        // width 60/20/20 via FillWeight.
         _itemsSlotCol.HeaderText = "#";
         _itemsSlotCol.Name = "Slot";
         _itemsSlotCol.ReadOnly = true;
-        _itemsSlotCol.Width = 30;
+        _itemsSlotCol.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+        _itemsSlotCol.Width = 34;
 
         _itemsNameCol.HeaderText = "Item";
         _itemsNameCol.Name = "ItemName";
         _itemsNameCol.ReadOnly = true;
-        _itemsNameCol.Width = 220;
+        _itemsNameCol.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+        _itemsNameCol.FillWeight = 60;
 
         _itemsIdCol.HeaderText = "ID";
         _itemsIdCol.Name = "IdHex";
         _itemsIdCol.ReadOnly = true;
-        _itemsIdCol.Width = 55;
+        _itemsIdCol.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+        _itemsIdCol.FillWeight = 20;
+        _itemsIdCol.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
 
         _itemsEquipCol.HeaderText = "Equipped";
         _itemsEquipCol.Name = "Equipped";
-        _itemsEquipCol.Width = 70;
+        _itemsEquipCol.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+        _itemsEquipCol.FillWeight = 20;
+        _itemsEquipCol.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
 
         _itemsGrid.AllowUserToAddRows = false;
         _itemsGrid.AllowUserToDeleteRows = false;
@@ -366,10 +394,8 @@ partial class MainForm
         _applyItemsBtn.Name = "_applyItemsBtn";
         _applyItemsBtn.Text = "Items are read-only (display only)";
 
-        // Fill first, then Bottom (note, button) added last so they dock first.
-        _itemsTab.Controls.Add(_itemsGrid);
-        _itemsTab.Controls.Add(_applyItemsBtn);
-        _itemsTab.Controls.Add(_itemsNote);
+        // (The Items grid now lives in _itemsHost on the Stats tab — see above.
+        //  _itemsTab is no longer added to the tab control.)
         _itemsTab.Name = "_itemsTab";
         _itemsTab.Text = "Items";
 
@@ -421,7 +447,7 @@ partial class MainForm
         _bagTab.Text = "Party Bag";
 
         // ── Tab control (Split.Panel2) ─────────────────────────────────────────
-        _tabs.Controls.AddRange(new Control[] { _statsTab, _itemsTab, _bagTab });
+        _tabs.Controls.AddRange(new Control[] { _statsTab, _bagTab });
         _tabs.Dock = DockStyle.Fill;
         _tabs.Name = "_tabs";
         _tabs.SelectedIndex = 0;
@@ -431,8 +457,10 @@ partial class MainForm
         // ── Split container ────────────────────────────────────────────────────
         _split.Dock = DockStyle.Fill;
         _split.Name = "_split";
-        _split.SplitterDistance = 220;
-        _split.SplitterWidth = 4;
+        _split.FixedPanel = FixedPanel.Panel1;   // character list keeps a constant width
+        _split.SplitterDistance = 330;
+        _split.SplitterWidth = 6;
+        _split.Panel1MinSize = 240;
         _split.TabIndex = 2;
 
         // ── Status strip ───────────────────────────────────────────────────────
@@ -500,29 +528,38 @@ partial class MainForm
     /// </summary>
     private static void BuildStatRow(Panel row, Label lbl, NumericUpDown field, string text)
     {
-        // Label
+        // Label + value are both docked Left so the pair stays packed as
+        // "Stat  [value]" — like the game's status line — instead of stretching to
+        // opposite edges of the column.
         lbl.AutoSize = false;
-        lbl.BackColor = Color.FromArgb(25, 25, 35);
-        lbl.Dock = DockStyle.Fill;
-        lbl.ForeColor = Color.LightGray;
+        lbl.BackColor = Theme.Window;
+        lbl.Dock = DockStyle.Left;
+        lbl.Width = 170;
+        lbl.ForeColor = Theme.SubText;
+        lbl.Font = new Font(Theme.FontName, 10F, FontStyle.Bold);
         lbl.Margin = new Padding(0);
         lbl.Text = text;
-        lbl.TextAlign = ContentAlignment.MiddleRight;
+        lbl.TextAlign = ContentAlignment.MiddleLeft;
 
         // NumericUpDown
-        field.Dock = DockStyle.Right;
-        field.Font = new Font("Segoe UI", 10F);
+        field.BorderStyle = BorderStyle.FixedSingle;
+        field.BackColor = Color.FromArgb(10, 22, 62);
+        field.ForeColor = Theme.Text;
+        field.Dock = DockStyle.Left;
+        field.Font = new Font(Theme.FontName, 10F, FontStyle.Bold);
         field.Margin = new Padding(0);
-        field.Width = 135;
+        field.TextAlign = HorizontalAlignment.Center;
+        field.Width = 130;
 
-        // Row panel — add field first (Right), then label (Fill)
-        row.BackColor = Color.FromArgb(25, 25, 35);
+        // Row panel — add field first, then label, so the label docks leftmost and
+        // the value sits immediately to its right.
+        row.BackColor = Theme.Window;
         row.Dock = DockStyle.Top;
-        row.Height = 32;
+        row.Height = 34;
         row.Margin = new Padding(0);
-        row.Padding = new Padding(0, 2, 0, 2);
-        row.Controls.Add(lbl);
+        row.Padding = new Padding(14, 2, 8, 2);
         row.Controls.Add(field);
+        row.Controls.Add(lbl);
     }
 
     #endregion
@@ -569,6 +606,8 @@ partial class MainForm
     private NumericUpDown _hpCurField = null!, _hpMaxField = null!;
     private NumericUpDown _mpCurField = null!, _mpMaxField = null!;
 
+    private Panel _itemsHost = null!;
+    private Label _itemsHeader = null!;
     private DataGridView _itemsGrid = null!;
     private DataGridViewTextBoxColumn _itemsSlotCol = null!;
     private DataGridViewTextBoxColumn _itemsNameCol = null!;

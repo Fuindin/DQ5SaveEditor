@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Drawing.Drawing2D;
 
 namespace DQ5SaveEditor;
 
@@ -9,59 +10,175 @@ public partial class MainForm : Form
     private Character? _selectedChar;
     private bool       _isDirty;          // true = unsaved changes in memory
 
-    public MainForm()
+    private readonly string? _initialFile;
+
+    public MainForm() : this(null) { }
+
+    public MainForm(string? initialFile)
     {
         InitializeComponent();
-        ApplyDarkTheme();
+        ApplyDqTheme();
+        _initialFile = initialFile;
     }
 
-    // ── Dark theme ────────────────────────────────────────────────────────────
-    private void ApplyDarkTheme()
+    private void LoadInitialFile()
     {
-        BackColor = Color.FromArgb(25, 25, 35);
-        ForeColor = Color.White;
-
-        _menu.BackColor = Color.FromArgb(35, 35, 45);
-        _menu.ForeColor = Color.White;
-
-        foreach (ToolStripMenuItem item in _menu.Items)
-        { 
-            item.BackColor = Color.FromArgb(35, 35, 45); item.ForeColor = Color.White; 
+        if (_initialFile == null)
+        {
+            return;
         }
 
-        _topBar.BackColor = Color.FromArgb(30, 30, 30);
+        try
+        {
+            _save = SaveData.LoadSaveState(_initialFile);
+            _filePath = _initialFile;
+            _isDirty = false;
+            PopulateUI();
+            SetStatus($"Loaded: {Path.GetFileName(_filePath)}  —  {_save.Characters.Count} characters found.");
+            Text = $"DQ5 Save Editor — {Path.GetFileName(_filePath)}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to load save state:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
 
-        _status.BackColor = Color.FromArgb(30, 30, 40);
-        _statusLabel.ForeColor = Color.LightGray;
+    // ── Dragon Quest V "command window" theme ──────────────────────────────────
+    private void ApplyDqTheme()
+    {
+        BackColor = Theme.Backdrop;
+        ForeColor = Theme.Text;
+        Font = new Font(Theme.FontName, 9F);
 
-        _charList.BackColor = Color.FromArgb(30, 30, 45);
-        _charList.ForeColor = Color.White;
+        // Menu — navy with a custom renderer so dropdowns match.
+        _menu.Renderer = new DqMenuRenderer();
+        _menu.BackColor = Theme.Backdrop;
+        _menu.ForeColor = Theme.Text;
+        StyleMenuItems(_menu.Items);
 
-        _tabs.BackColor = Color.FromArgb(25, 25, 35);
+        // Top bar (gold) and status strip.
+        Theme.FrameContainer(_topBar, radius: 10, pad: 8);
+        _goldLabel.ForeColor = Theme.Gold;
+        _goldField.BackColor = Theme.Window;
+        _goldField.ForeColor = Theme.Text;
+        _goldField.BorderStyle = BorderStyle.FixedSingle;
+        Theme.StyleButton(_applyGoldBtn);
+
+        _status.BackColor = Theme.Backdrop;
+        _statusLabel.ForeColor = Theme.SubText;
+
+        // Character list window (Split.Panel1).
+        _split.BackColor = Theme.Backdrop;
+        _split.Panel1.BackColor = Theme.Backdrop;
+        _split.Panel2.BackColor = Theme.Backdrop;
+        Theme.FrameContainer(_split.Panel1, radius: 12, pad: 7);
+        _listHeader.BackColor = Color.FromArgb(10, 22, 62);
+        _listHeader.ForeColor = Theme.Gold;
+        _charList.BackColor = Theme.Window;
+        _charList.ForeColor = Theme.Text;
+        _charList.BorderStyle = BorderStyle.None;
+
+        // Tabs — owner-drawn navy/gold headers, framed pages.
+        _tabs.BackColor = Theme.Backdrop;
+        _tabs.DrawMode = TabDrawMode.OwnerDrawFixed;
+        _tabs.SizeMode = TabSizeMode.Fixed;
+        _tabs.ItemSize = new Size(120, 30);
+        _tabs.Padding = new Point(0, 0);
+        _tabs.DrawItem += Tabs_DrawItem;
         foreach (TabPage tp in _tabs.TabPages)
-        { 
-            tp.BackColor = Color.FromArgb(25, 25, 35); tp.ForeColor = Color.White; 
+        {
+            // The tab control supplies the border; just navy-fill the page. (A custom
+            // Paint frame on a TabPage suppresses its child controls, so avoid it here.)
+            tp.BackColor = Theme.Window;
+            tp.ForeColor = Theme.Text;
+            tp.Padding = new Padding(6);
         }
+
+        // Stats tab inner panels.
+        _charNameLabel.BackColor = Color.FromArgb(10, 22, 62);
+        _charNameLabel.ForeColor = Theme.Gold;
+        _statsRows.BackColor = Theme.Window;
+        _bottomStrip.BackColor = Theme.Window;
 
         foreach (var btn in new[] { _maxStatsBtn, _maxExpBtn, _fullHpMpBtn })
-        { 
-            btn.BackColor = Color.FromArgb(55, 55, 80); btn.ForeColor = Color.White; 
+        {
+            Theme.StyleButton(btn);
         }
+        Theme.StyleButton(_applyStatsBtn, primary: true);
+        _applyStatsBtn.Text = "▶ Apply to Character";
 
-        StyleGrid(_itemsGrid);
-        StyleGrid(_bagGrid);
+        // Read-only footer buttons stay subdued.
+        foreach (var btn in new[] { _applyItemsBtn, _applyBagBtn })
+        {
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.BackColor = Color.FromArgb(10, 22, 62);
+            btn.ForeColor = Theme.SubText;
+            btn.FlatAppearance.BorderColor = Theme.FrameDim;
+        }
+        _itemsNote.ForeColor = Theme.SubText;
+        _itemsHost.BackColor = Theme.Window;
+        _itemsHeader.BackColor = Color.FromArgb(10, 22, 62);
+        _itemsHeader.ForeColor = Theme.Gold;
+        _itemsHeader.Font = new Font(Theme.FontName, 9.5F, FontStyle.Bold);
+
+        Theme.StyleGrid(_itemsGrid);
+        Theme.StyleGrid(_bagGrid);
+
+        _statsTab.Resize += (s, e) => LayoutStatsColumns();
     }
 
-    private static void StyleGrid(DataGridView g)
+    /// <summary>
+    /// Size the stat column to just fit the "Stat [value]" pair (the items list fills
+    /// the rest), clamped so it never swallows more than ~55% on a narrow window.
+    /// </summary>
+    private void LayoutStatsColumns()
     {
-        g.BackgroundColor = Color.FromArgb(25, 25, 35);
-        g.DefaultCellStyle.BackColor = Color.FromArgb(35, 35, 50);
-        g.DefaultCellStyle.ForeColor = Color.White;
-        g.DefaultCellStyle.SelectionBackColor = Color.FromArgb(70, 70, 120);
-        g.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(40, 40, 60);
-        g.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
-        g.EnableHeadersVisualStyles = false;
-        g.GridColor = Color.FromArgb(50, 50, 70);
+        if (_statsTab.ClientSize.Width <= 0)
+        {
+            return;
+        }
+
+        int want = (int)(370 * (DeviceDpi / 96.0));
+        int cap = (int)(_statsTab.ClientSize.Width * 0.55);
+        _statsRows.Width = Math.Min(want, cap);
+    }
+
+    private static void StyleMenuItems(ToolStripItemCollection items)
+    {
+        foreach (ToolStripItem item in items)
+        {
+            item.BackColor = Theme.Window;
+            item.ForeColor = Theme.Text;
+            if (item is ToolStripMenuItem mi && mi.HasDropDownItems)
+            {
+                StyleMenuItems(mi.DropDownItems);
+            }
+        }
+    }
+
+    // Owner-draw the tab headers as DQ command tabs (gold cursor on the active tab).
+    private void Tabs_DrawItem(object? sender, DrawItemEventArgs e)
+    {
+        var tab = _tabs.GetTabRect(e.Index);
+        bool active = _tabs.SelectedIndex == e.Index;
+
+        using (var bg = new SolidBrush(active ? Theme.Window : Color.FromArgb(9, 18, 52)))
+        {
+            e.Graphics.FillRectangle(bg, tab);
+        }
+
+        if (active)
+        {
+            using var pen = new Pen(Theme.Gold, 2f);
+            e.Graphics.DrawLine(pen, tab.Left + 6, tab.Bottom - 2, tab.Right - 6, tab.Bottom - 2);
+        }
+
+        TextRenderer.DrawText(
+            e.Graphics, _tabs.TabPages[e.Index].Text,
+            new Font(Theme.FontName, 9.5F, active ? FontStyle.Bold : FontStyle.Regular),
+            tab, active ? Theme.Gold : Theme.SubText,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
     }
 
     // ── Menu events ───────────────────────────────────────────────────────────
@@ -102,22 +219,36 @@ public partial class MainForm : Form
         var ch = (Character)_charList.Items[e.Index];
         bool sel = (e.State & DrawItemState.Selected) != 0;
 
-        using (var bg = new SolidBrush(sel ? Color.FromArgb(70, 70, 120) : Color.FromArgb(30, 30, 45)))
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+        // Selected row: a brighter navy "highlight" pill with a gold cursor arrow.
+        using (var bg = new SolidBrush(sel ? Color.FromArgb(40, 72, 146) : Theme.Window))
         {
             e.Graphics.FillRectangle(bg, e.Bounds);
         }
+        if (sel)
+        {
+            using var arrow = new SolidBrush(Theme.Gold);
+            int cy = e.Bounds.Y + e.Bounds.Height / 2;
+            e.Graphics.FillPolygon(arrow, new[]
+            {
+                new Point(e.Bounds.X + 4, cy - 6),
+                new Point(e.Bounds.X + 12, cy),
+                new Point(e.Bounds.X + 4, cy + 6),
+            });
+        }
 
-        using var nameFont = new Font("Segoe UI", 10F, FontStyle.Bold);
-        using var infoFont = new Font("Segoe UI", 8F);
+        using var nameFont = new Font(Theme.FontName, 10F, FontStyle.Bold);
+        using var infoFont = new Font(Theme.FontName, 8F);
 
         // Lay the two lines out from the actual font height so the row scales with
         // DPI instead of relying on fixed pixel offsets (which overlap at >100%).
-        int x = e.Bounds.X + 8;
+        int x = e.Bounds.X + 18;
         int top = e.Bounds.Y + 2;
         int nameHeight = (int)Math.Ceiling(nameFont.GetHeight(e.Graphics));
 
         // Tint monster names so they stand out from the human roster.
-        Color nameColor = ch.IsMonster ? Color.FromArgb(170, 210, 255) : Color.White;
+        Color nameColor = ch.IsMonster ? Theme.MonsterName : Theme.Text;
         using (var nameBrush = new SolidBrush(nameColor))
         {
             e.Graphics.DrawString(ch.Name, nameFont, nameBrush, x, top);
@@ -129,7 +260,7 @@ public partial class MainForm : Form
             info += $"  ·  {ch.SpeciesName}";
         }
 
-        using (var infoBrush = new SolidBrush(Color.FromArgb(160, 200, 160)))
+        using (var infoBrush = new SolidBrush(Theme.InfoGreen))
         {
             e.Graphics.DrawString(info, infoFont, infoBrush, x, top + nameHeight);
         }
@@ -453,15 +584,18 @@ public partial class MainForm : Form
     {
         base.OnLoad(e);
         UpdateCharListItemHeight();
+        LoadInitialFile();
 
-        // Default the two panes to an even 50/50 split; the user can still drag the
-        // splitter afterward. Done here (not in the designer) because the container
-        // now has its real width.
-        int usable = _split.Width - _split.SplitterWidth;
-        if (usable > 0)
+        // Keep the character list at a constant, readable width (FixedPanel.Panel1);
+        // clamp in case DPI scaling pushed the designer value out of range.
+        int target = (int)(330 * (DeviceDpi / 96.0));
+        int maxDist = _split.Width - _split.Panel2MinSize - _split.SplitterWidth;
+        if (maxDist > _split.Panel1MinSize)
         {
-            _split.SplitterDistance = usable / 2;
+            _split.SplitterDistance = Math.Clamp(target, _split.Panel1MinSize, maxDist);
         }
+
+        LayoutStatsColumns();
     }
 
     protected override void OnDpiChanged(DpiChangedEventArgs e)
