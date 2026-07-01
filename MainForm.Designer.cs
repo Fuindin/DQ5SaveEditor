@@ -278,7 +278,7 @@ partial class MainForm
         BuildStatRow(_rowMpMax,  _mpMaxLbl,  _mpMaxField,  "MP (max)");
 
         // Configure each NumericUpDown range (font/width set inside BuildStatRow)
-        _levelField.Minimum  = 1;   _levelField.Maximum  = 99;
+        _levelField.Minimum  = 0;   _levelField.Maximum  = 99;   // 0 = reserve/uninitialised roster entries (e.g. Maria)
         _strField.Minimum    = 0;   _strField.Maximum    = 255;
         _resField.Minimum    = 0;   _resField.Maximum    = 255;
         _aglField.Minimum    = 0;   _aglField.Maximum    = 255;

@@ -290,19 +290,25 @@ public partial class MainForm : Form
         _charNameLabel.Text = ch.IsMonster && ch.SpeciesName.Length > 0
             ? $"{ch.Name}  ({ch.SpeciesName})"
             : ch.Name;
-        _levelField.Value  = ch.Level;
-        _strField.Value    = ch.Str;
-        _resField.Value    = ch.Res;
-        _aglField.Value    = ch.Agl;
-        _wisField.Value    = ch.Wis;
-        _lckField.Value    = ch.Lck;
-        _expField.Value    = Math.Min(ch.Exp, 9_999_999);
-        _hpCurField.Value  = ch.HpCur;
-        _hpMaxField.Value  = ch.HpMax;
-        _mpCurField.Value  = ch.MpCur;
-        _mpMaxField.Value  = ch.MpMax;
+        // Clamp every value to its field's range so an out-of-range stored value
+        // (e.g. Maria's Level 0, or glitched HP/MP) can never throw on load.
+        SetField(_levelField, ch.Level);
+        SetField(_strField,   ch.Str);
+        SetField(_resField,   ch.Res);
+        SetField(_aglField,   ch.Agl);
+        SetField(_wisField,   ch.Wis);
+        SetField(_lckField,   ch.Lck);
+        SetField(_expField,   ch.Exp);
+        SetField(_hpCurField, ch.HpCur);
+        SetField(_hpMaxField, ch.HpMax);
+        SetField(_mpCurField, ch.MpCur);
+        SetField(_mpMaxField, ch.MpMax);
         PopulateItemsGrid(ch);
     }
+
+    /// <summary>Assign a value to a NumericUpDown, clamped to its [Minimum, Maximum].</summary>
+    private static void SetField(NumericUpDown field, decimal value)
+        => field.Value = Math.Clamp(value, field.Minimum, field.Maximum);
 
     // ── Stats buttons ─────────────────────────────────────────────────────────
     private void MaxStatsBtn_Click(object? sender, EventArgs e)
