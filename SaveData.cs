@@ -72,38 +72,50 @@ public class Character
 
 public class CharItem
 {
-    public byte ItemId { get; set; }
+    // Item id is a 16-bit value in .ml1 save states (e.g. Diamond akillics = 0x0103,
+    // Floral parasol = 0x0105). In the legacy .sav format only the low byte is stored,
+    // so its ids always fall in 0x00-0xFF. The name table below is keyed by int and
+    // carries both the .sav low-byte key and the full .ml1 key where they differ.
+    public ushort ItemId { get; set; }
     public byte Flag { get; set; }      // live format: bit0=1 → equipped
     public byte Qty { get; set; } = 1;  // live format quantity
 
-    public bool IsEmpty => ItemId == 0x00 || ItemId == 0xFF || ItemId == 0xD5;
+    public bool IsEmpty => ItemId == 0x0000 || ItemId == 0x00FF || ItemId == 0xFFFF || ItemId == 0x00D5;
     public bool IsEquipped => (Flag & 0x01) != 0 || Flag == 0x80;
 
     public string ItemName => ItemNames.TryGetValue(ItemId, out var n) ? n : $"Unknown (0x{ItemId:X2})";
 
     // ── Item names extracted from the ROM's English name table ────────────────
-    // Source: Dragon Quest V DS ROM, English item-name bank. The table is ordered
-    // by item ID; offsets were calibrated against 21 live-save-state confirmations
-    // (all matched exactly). Only ID ranges densely bracketed by confirmed anchors
-    // are included, so every entry here is trustworthy:
-    //   0x35-0x8B (weapons/armour/shields/helmets), 0xA1-0xAF (consumables/seeds),
-    //   0xC2-0xD2 (tools/keys), plus 0x01 & 0xDA. Unmapped IDs (early weapons,
-    //   accessories, gap regions) render as "Unknown (0xNN)".
-    public static readonly Dictionary<byte, string> ItemNames = new()
+    // Source: Dragon Quest V DS ROM, English item-name bank. Keyed by the item's
+    // numeric id. Most ids are 8-bit (0x00-0xFF); a few genuine 16-bit ids exist in
+    // .ml1 save states (e.g. 0x0103 Diamond akillics, 0x0105 Floral parasol) and are
+    // listed with their full value. Where a 16-bit item shares a low byte with an
+    // 8-bit item, both keys are present so the legacy .sav (low-byte) path also works.
+    // Calibrated against live-save-state confirmations (screenshots of character
+    // items + party bag, July 2026). Unmapped ids render as "Unknown (0xNN)".
+    public static readonly Dictionary<int, string> ItemNames = new()
     {
         [0x00] = "(empty)",
         [0x01] = "Cypress stick",
-        // Early weapons (confirmed via live-save calibration, June 2026)
+        // Early weapons (confirmed via live-save calibration, June/July 2026)
         [0x03] = "Stone axe",
-        [0x05] = "Floral parasol",
+        [0x05] = "Floral parasol",   // 8-bit alias; .ml1 stores it as 0x0105
+        [0x06] = "Stone fangs",
         [0x07] = "Steel fangs",
         [0x0C] = "Steel broadsword",
         [0x0D] = "Pankraz's sword",
         [0x0E] = "Serpent sword",
         [0x0F] = "Cautery sword",
         [0x10] = "Dream blade",
+        [0x12] = "Siren sword",
+        [0x13] = "Icicle dirk",
+        [0x16] = "Dragonsbane",
         [0x1B] = "Zenithian Sword",
+        [0x1E] = "Staff of salvation",
+        [0x21] = "Lightning staff",
         [0x23] = "Staff of antimagic",
+        [0x26] = "Magma staff",
+        [0x28] = "Dragon staff",
         [0x29] = "Giant mallet",
         [0x2A] = "Sledgehammer",
         [0x2D] = "Iron claw",
@@ -200,9 +212,16 @@ public class CharItem
         [0x8D] = "Iron helmet",
         [0x8E] = "Top hat",
         [0x8F] = "Iron mask",
+        [0x90] = "Hermes' hat",
+        [0x91] = "Hades' helm",
+        [0x93] = "Happy hat",
+        [0x94] = "Thinking cap",
+        [0x95] = "Golden tiara",
+        [0x97] = "Zenithian Helm",
         // Accessories
         [0x92] = "Wedding veil",
         [0x9A] = "Bianca's ribbon",
+        [0x9B] = "Meteorite bracer",
         [0x9C] = "Kamikazee bracer",
         [0x9E] = "Circle of Fire",
         [0x9F] = "Circle of Water",
@@ -231,7 +250,10 @@ public class CharItem
         [0xB7] = "Paxa Punch",
         [0xB9] = "Elfin elixir",
         [0xBB] = "Dieamend",
+        [0xBE] = "Flying carpet",
+        [0xBF] = "Zenithian Tintinnabulum",
         // Tools / keys / quest
+        [0xC0] = "Talaria",
         [0xC1] = "Ra's mirror",
         [0xC2] = "Torch",
         [0xC3] = "Herald of Spring",
@@ -251,23 +273,31 @@ public class CharItem
         [0xD1] = "Mini medal",
         [0xD2] = "Adventurer's map",
         [0xD3] = "Pankraz's letter",
+        [0xD4] = "Stone from Whealbrook",
         [0xD7] = "Zizzwizz Pillow",
+        [0xD9] = "Silver teacup",
         [0xDA] = "Silver tea tray",
         [0xE1] = "Crude image",
         [0xE6] = "Honey buns",
         [0xEB] = "Chocolate medalliyum",
         [0xEC] = "Maxi medal",
+        [0xEF] = "'Lofty Lilts'",
+        [0xF0] = "Yggdrasil sapling",
+        [0xF8] = "Madalena's locket",
         [0xFB] = "Chamois",
         [0xFE] = "Big Book of Beasts",
+        // ── 16-bit ids (.ml1 save states) ─────────────────────────────────────
+        [0x0103] = "Diamond akillics",   // low byte collides with 0x03 Stone axe
+        [0x0105] = "Floral parasol",     // low byte collides with 0x05 (alias above)
     };
 }
 
 public class BagItem
 {
-    public byte ItemId { get; set; }
+    public ushort ItemId { get; set; }
     public byte Quantity { get; set; }
 
-    public bool IsEmpty => ItemId == 0xFF || ItemId == 0xD5 || ItemId == 0x00;
+    public bool IsEmpty => ItemId == 0x0000 || ItemId == 0x00FF || ItemId == 0xFFFF || ItemId == 0x00D5;
     public string ItemName => CharItem.ItemNames.TryGetValue(ItemId, out var n) ? n : $"Unknown (0x{ItemId:X2})";
 }
 
@@ -383,7 +413,7 @@ public class SaveData
 
             ch.Items[s] = new CharItem
             {
-                ItemId = (byte)(BitConverter.ToUInt16(_raw, p) & 0xFF),
+                ItemId = BitConverter.ToUInt16(_raw, p),   // full 16-bit id
                 Qty    = _raw[p + 2],
                 Flag   = _raw[p + 3],
             };
@@ -405,7 +435,7 @@ public class SaveData
 
             BagItems[i] = new BagItem
             {
-                ItemId   = (byte)(BitConverter.ToUInt16(_raw, p) & 0xFF),
+                ItemId   = BitConverter.ToUInt16(_raw, p),   // full 16-bit id
                 Quantity = _raw[p + 2],
             };
         }
@@ -501,11 +531,12 @@ public class SaveData
 
     // Party bag: fixed live location (gold is at 0x0009D820, bag at gold+0x20).
     private const int ML1_BAG_OFFSET = 0x0009D840;  // (u16 id, u8 qty, u8 flag) × N
-    // The live party bag holds far more than the old .sav-era 24 (the in-game list
-    // pages through ~6×6). Read generously; the slots past the contents are zero
-    // padding (the region runs clear up to the party array at 0x9DD9C) and the grid
-    // simply skips empty slots.
-    private const int ML1_BAG_SLOTS  = 80;
+    // The bag is a fixed 263-slot array. Its capacity is stored in the header dword
+    // right before it (0x0009D838 = 0x107 = 263), and 0x9D840 + 263*4 = 0x9DC5C lands
+    // exactly on the next allocation (the "Bag" menu label), so 263 is the hard cap —
+    // reading all 263 never overruns. Contents are a 0x0000-terminated list; slots
+    // past the terminator are zero padding and the grid simply skips empty slots.
+    private const int ML1_BAG_SLOTS  = 263;
 
     // ── Name-anchored live struct (recruited monsters) ───────────────────────
     // Every recruited monster (wagon AND stored at the monster park) keeps a live
@@ -572,7 +603,8 @@ public class SaveData
 
         var save = new SaveData(raw, savBufBase, true);
         save.ParseCharacters();
-        save.ParseBagItems();
+        save.ParseBagItems();          // SRAM copy (cold-continue) — capped at 24 slots
+        save.ReadLiveBag();            // authoritative live bag (263 slots) overrides it
         save.FindHeroLiveOffsets();    // locate live battle-array data in main RAM
         save.FindMonsterLiveData();    // locate every recruited monster's live copies
 
@@ -1083,7 +1115,7 @@ public class SaveData
         for (int s = 0; s < ItemSlots; s++)
         {
             int pos = a + Off_Items + s * 2;
-            _raw[pos]     = ch.Items[s].ItemId;
+            _raw[pos]     = (byte)ch.Items[s].ItemId;   // .sav slots are 8-bit
             _raw[pos + 1] = ch.Items[s].Flag;
         }
     }
@@ -1091,7 +1123,7 @@ public class SaveData
     public void FlushBagItem(int slot)
     {
         int off = FO(BagOffset) + slot * 2;
-        _raw[off]     = BagItems[slot].ItemId;
+        _raw[off]     = (byte)BagItems[slot].ItemId;   // .sav slots are 8-bit
         _raw[off + 1] = BagItems[slot].Quantity;
     }
 
